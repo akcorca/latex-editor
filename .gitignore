@@ -5,3 +5,6 @@ dist/
 public/swiftlatex/
 
 *.log
+
+# Playwright
+test-results/
