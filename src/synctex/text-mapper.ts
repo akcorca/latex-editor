@@ -5,6 +5,14 @@ export interface SourceLocation {
   line: number
 }
 
+export interface PdfLocation {
+  page: number
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 interface TextBlock {
   text: string
   x: number
@@ -65,6 +73,32 @@ export class TextMapper {
     return this.matchTextToSource(block.text)
   }
 
+  /** Forward search: find PDF position for a source line */
+  forwardLookup(file: string, line: number): PdfLocation | null {
+    const lines = this.sourceLines.get(file)
+    if (!lines) return null
+
+    const sourceLine = lines[line - 1]
+    if (!sourceLine) return null
+
+    // Extract meaningful text fragments from the source line (skip TeX commands)
+    const textFragments = this.extractTextFragments(sourceLine)
+    if (textFragments.length === 0) return null
+
+    // Search all pages for matching text blocks
+    for (const [page, blocks] of this.pageBlocks) {
+      for (const block of blocks) {
+        for (const frag of textFragments) {
+          if (block.text.includes(frag) || frag.includes(block.text)) {
+            return { page, x: block.x, y: block.y, width: block.width, height: block.height }
+          }
+        }
+      }
+    }
+
+    return null
+  }
+
   /** Clear all indexed data */
   clear(): void {
     this.pageBlocks.clear()
@@ -103,6 +137,14 @@ export class TextMapper {
     }
 
     return null
+  }
+
+  private extractTextFragments(line: string): string[] {
+    // Remove TeX commands, keep plain text fragments (3+ chars)
+    const stripped = line
+      .replace(/\\[a-zA-Z]+(\{[^}]*\}|\[[^\]]*\])*/g, ' ')
+      .replace(/[{}\\$%&]/g, '')
+    return stripped.split(/\s+/).filter((w) => w.length >= 3)
   }
 
   private findInSources(needle: string): SourceLocation | null {

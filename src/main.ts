@@ -141,6 +141,17 @@ editor = createEditor(editorContainer, initialContent, onEditorChange)
 const fileTreeContainer = document.getElementById('file-tree-panel')!
 new FileTree(fileTreeContainer, fs, onFileSelect)
 
+// --- Forward Search (Cmd/Ctrl+Enter) ---
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    e.preventDefault()
+    const line = editor.getPosition()?.lineNumber
+    if (line) {
+      pdfViewer.forwardSearch(currentFile, line)
+    }
+  }
+})
+
 // --- Layout ---
 setupDividers()
 

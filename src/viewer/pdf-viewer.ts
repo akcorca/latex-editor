@@ -193,6 +193,50 @@ export class PdfViewer {
     }
   }
 
+  /** Forward search: highlight a source location in the PDF */
+  forwardSearch(file: string, line: number): void {
+    const loc = this.textMapper.forwardLookup(file, line)
+    if (!loc) return
+
+    // Find the page wrapper
+    const pages = this.pagesContainer.querySelectorAll('.pdf-page-container')
+    const pageEl = pages[loc.page - 1]
+    if (!pageEl) return
+
+    // Remove previous highlight
+    for (const el of this.pagesContainer.querySelectorAll('.forward-search-highlight')) {
+      el.remove()
+    }
+
+    // Create highlight overlay
+    const highlight = document.createElement('div')
+    highlight.className = 'forward-search-highlight'
+    highlight.style.cssText = [
+      'position: absolute',
+      `left: ${loc.x * this.scale}px`,
+      `top: ${loc.y * this.scale}px`,
+      `width: ${Math.max(loc.width * this.scale, 200)}px`,
+      `height: ${Math.max(loc.height * this.scale, 20)}px`,
+      'background: rgba(255, 200, 0, 0.3)',
+      'border: 2px solid rgba(255, 150, 0, 0.7)',
+      'pointer-events: none',
+      'transition: opacity 0.5s',
+    ].join(';')
+
+    // Page wrapper needs relative positioning for absolute child
+    ;(pageEl as HTMLElement).style.position = 'relative'
+    pageEl.appendChild(highlight)
+
+    // Scroll to the page
+    pageEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+
+    // Fade out after 2s
+    setTimeout(() => {
+      highlight.style.opacity = '0'
+      setTimeout(() => highlight.remove(), 500)
+    }, 2000)
+  }
+
   clear(): void {
     this.pagesContainer.innerHTML = ''
     this.controlsEl.style.display = 'none'

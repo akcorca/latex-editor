@@ -97,4 +97,42 @@ describe('TextMapper', () => {
     const result = mapper.lookup(1, 160, 100)
     expect(result).toEqual({ file: 'chapter1.tex', line: 1 })
   })
+
+  it('forward lookup finds PDF position for a source line', async () => {
+    const mapper = new TextMapper()
+    mapper.setSource(
+      'main.tex',
+      '\\documentclass{article}\n\\begin{document}\nHello World\n\\end{document}',
+    )
+
+    const page = mockPage([
+      { str: 'Hello World', transform: [1, 0, 0, 1, 100, 700], width: 80, height: 12 },
+    ])
+    await mapper.indexPage(page, 1)
+
+    const result = mapper.forwardLookup('main.tex', 3) // "Hello World" is line 3
+    expect(result).toEqual({ page: 1, x: 100, y: 100, width: 80, height: 12 })
+  })
+
+  it('forward lookup returns null for TeX-only lines', async () => {
+    const mapper = new TextMapper()
+    mapper.setSource(
+      'main.tex',
+      '\\documentclass{article}\n\\begin{document}\nHello\n\\end{document}',
+    )
+
+    const page = mockPage([
+      { str: 'Hello', transform: [1, 0, 0, 1, 100, 700], width: 40, height: 12 },
+    ])
+    await mapper.indexPage(page, 1)
+
+    // Line 1 is "\\documentclass{article}" — no meaningful text fragments (< 3 chars after stripping)
+    const result = mapper.forwardLookup('main.tex', 1)
+    expect(result).toBeNull()
+  })
+
+  it('forward lookup returns null for unknown file', () => {
+    const mapper = new TextMapper()
+    expect(mapper.forwardLookup('unknown.tex', 1)).toBeNull()
+  })
 })
