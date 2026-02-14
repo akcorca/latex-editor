@@ -138,10 +138,9 @@ export class PdfViewer {
       ctx.scale(dpr, dpr)
       await page.render({ canvasContext: ctx, viewport }).promise
 
-      // Cmd/Ctrl+click → inverse search
+      // Click → inverse search
       canvas.addEventListener('click', (e) => {
-        if (!(e.metaKey || e.ctrlKey) || !this.onInverseSearch) return
-        e.preventDefault()
+        if (!this.onInverseSearch) return
         const rect = canvas.getBoundingClientRect()
         const x = (e.clientX - rect.left) / this.scale
         const y = (e.clientY - rect.top) / this.scale

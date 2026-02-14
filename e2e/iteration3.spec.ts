@@ -37,8 +37,7 @@ test.describe('Iteration 3: PDF ↔ Source Jump', () => {
     // Click in the text region
     await canvas.click({
       position: { x: box!.width / 3, y: box!.height / 4 },
-      modifiers: ['Meta'],
-    })
+      })
 
     // App should still be functional after the click
     await expect(page.locator('#status')).toHaveText('Ready')
@@ -125,8 +124,7 @@ test.describe('Iteration 3: PDF ↔ Source Jump', () => {
 
     await canvas.click({
       position: { x: box!.width / 3, y: box!.height / 4 },
-      modifiers: ['Meta'],
-    })
+      })
 
     // App should remain functional
     await expect(page.locator('#status')).toHaveText('Ready')

@@ -33,7 +33,6 @@ test('Cmd+click on PDF text jumps to source line', async ({ page }) => {
   // Click in the text region (approximately where "First paragraph" would be)
   await canvas.click({
     position: { x: box!.width / 3, y: box!.height / 4 },
-    modifiers: ['Meta'],
   })
 
   // Check that the editor cursor moved — we can't easily verify the exact line,

@@ -153,7 +153,7 @@ editor.onDidChangeCursorPosition(() => {
   if (forwardSearchTimer) clearTimeout(forwardSearchTimer)
   forwardSearchTimer = setTimeout(() => {
     pdfViewer.forwardSearch(currentFile, line)
-  }, 300)
+  }, 100)
 })
 
 // --- Layout ---
