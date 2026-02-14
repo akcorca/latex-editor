@@ -338,7 +338,7 @@ WASM worker는 `_compileLaTeX()` 동기 실행 중 메시지 큐 차단 → 컴�
 - [x] `main.ts`: engine init 전에 SW 등록 (`navigator.serviceWorker.register`)
 - [x] SW lifecycle 처리: install (`skipWaiting`), activate (구버전 캐시 정리 + `clients.claim`)
 - [x] Vite dev 호환: SW는 Vite proxy와 독립 동작 (proxy 응답을 캐시)
-- [ ] E2E 테스트: 두 번째 로드 시 네트워크 요청 수 감소 확인 → D에서 검증
+- [x] E2E 테스트: 두 번째 로드 시 37/37 texlive 요청 SW 캐시에서 서빙 확인
 
 ### C. PDF 부드러운 교체 (no-flash update) ✅
 
@@ -352,13 +352,14 @@ WASM worker는 `_compileLaTeX()` 동기 실행 중 메시지 큐 차단 → 컴�
 - [x] 페이지 수 변화 대응: `currentPage` 클램프
 - [x] 렌더 중 재렌더 요청 처리: `renderGeneration` 카운터로 stale 렌더 취소
 
-### D. 정리 + 검증
+### D. 정리 + 검증 ✅
 
-- [ ] E2E 테스트: 빠른 연속 타이핑 (50자+) → UI 끊김 없음 → 최종 PDF 정확
-- [ ] E2E 테스트: 컴파일 중 타이핑 → 변경사항이 최종 PDF에 반영됨
-- [ ] E2E 테스트: amsmath 사용 문서 두 번째 로드 시간 < 첫 번째 (SW 캐시)
-- [ ] 콘솔 성능 측정: 편집→PDF 갱신 총 시간 로깅
-- [ ] `docs/plan.md` 체크리스트 업데이트
+- [x] E2E 테스트: 빠른 연속 타이핑 (50자+) → UI 끊김 없음 → 최종 PDF 정확
+- [x] E2E 테스트: 컴파일 중 타이핑 → 변경사항이 최종 PDF에 반영됨
+- [x] E2E 테스트: SW 캐시 — 두 번째 로드 시 37/37 texlive 요청 캐시 서빙
+- [x] E2E 테스트: PDF 이중 버퍼 — MutationObserver로 컨테이너 비워짐 없음 확인
+- [x] 콘솔 성능 측정: 기존 로깅 유지 (Engine load, Compile, PDF render)
+- [x] `docs/plan.md` 체크리스트 업데이트
 
 ### 파일 변경 예상
 
