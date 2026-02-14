@@ -331,26 +331,26 @@ WASM worker는 `_compileLaTeX()` 동기 실행 중 메시지 큐 차단 → 컴�
 **현재:** 매 페이지 로드마다 패키지 재요청. WASM worker 내부 404 캐시만 존재.
 패키지 파일은 불변 (같은 이름 = 같은 내용) → cache-first 전략 적합.
 
-- [ ] `public/sw.js` 작성: `/texlive/` 요청 인터셉트
+- [x] `public/sw.js` 작성: `/texlive/` 요청 인터셉트
   - 200 응답: CacheStorage에 저장 후 반환 (cache-first)
-  - 301 응답 (not found): 캐시하지 않음 (서버에 패키지 추가될 수 있음)
+  - 301 응답 (not found): 캐시하지 않음
   - 캐시 이름에 버전 포함 (`texlive-cache-v1`)
-- [ ] `main.ts`: engine init 전에 SW 등록 (`navigator.serviceWorker.register`)
-- [ ] SW lifecycle 처리: install (캐시 생성), activate (구버전 캐시 정리)
-- [ ] Vite dev 환경 호환: dev에서는 SW 비활성화 또는 network-first로 전환
-- [ ] 단위/E2E 테스트: 두 번째 로드 시 네트워크 요청 수 감소 확인
+- [x] `main.ts`: engine init 전에 SW 등록 (`navigator.serviceWorker.register`)
+- [x] SW lifecycle 처리: install (`skipWaiting`), activate (구버전 캐시 정리 + `clients.claim`)
+- [x] Vite dev 호환: SW는 Vite proxy와 독립 동작 (proxy 응답을 캐시)
+- [ ] E2E 테스트: 두 번째 로드 시 네트워크 요청 수 감소 확인 → D에서 검증
 
-### C. PDF 부드러운 교체 (no-flash update)
+### C. PDF 부드러운 교체 (no-flash update) ✅
 
 **현재:** `render()`가 `pdfDoc.destroy()` + `innerHTML = ''` 후 새 페이지 렌더 → 빈 화면 깜빡임.
 
-- [ ] `pdf-viewer.ts`: 이중 버퍼 전략
+- [x] `pdf-viewer.ts`: 이중 버퍼 전략
   - 새 PDF를 DocumentFragment(오프스크린)에 렌더
   - 렌더 완료 후 `replaceChildren()`으로 한 번에 교체
   - 교체 후 이전 pdfDoc destroy
-- [ ] 스크롤 위치 보존: 교체 전 `scrollTop` 저장 → 교체 후 복원
-- [ ] 페이지 수 변화 대응: 페이지 추가/제거 시 스크롤 위치 클램프
-- [ ] 렌더 중 재렌더 요청 처리: 새 요청이 오면 현재 렌더 취소 후 최신 데이터로 재시작
+- [x] 스크롤 위치 보존: 교체 전 `scrollTop` 저장 → 교체 후 복원
+- [x] 페이지 수 변화 대응: `currentPage` 클램프
+- [x] 렌더 중 재렌더 요청 처리: `renderGeneration` 카운터로 stale 렌더 취소
 
 ### D. 정리 + 검증
 

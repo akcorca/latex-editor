@@ -125,6 +125,13 @@ new FileTree(fileTreeContainer, fs, onFileSelect)
 // --- Layout ---
 setupDividers()
 
+// --- Service Worker (texlive package cache) ---
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch((err) => {
+    console.warn('SW registration failed:', err)
+  })
+}
+
 // --- Initialize Engine ---
 async function init(): Promise<void> {
   setStatus('loading')

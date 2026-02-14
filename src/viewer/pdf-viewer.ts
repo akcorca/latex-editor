@@ -11,7 +11,7 @@ export class PdfViewer {
   private pdfDoc: pdfjsLib.PDFDocumentProxy | null = null
   private currentPage = 1
   private scale = 1.5
-  private rendering = false
+  private renderGeneration = 0
 
   constructor(container: HTMLElement) {
     this.container = container
@@ -55,14 +55,20 @@ export class PdfViewer {
 
   async render(pdfData: Uint8Array): Promise<number> {
     const start = performance.now()
+    const generation = ++this.renderGeneration
 
-    if (this.pdfDoc) {
-      this.pdfDoc.destroy()
-    }
+    const oldDoc = this.pdfDoc
 
     // Copy the data so the original ArrayBuffer isn't detached by postMessage
     const data = pdfData.slice()
     this.pdfDoc = await pdfjsLib.getDocument({ data }).promise
+
+    // Bail if a newer render was requested while loading
+    if (generation !== this.renderGeneration) {
+      this.pdfDoc.destroy()
+      return performance.now() - start
+    }
+
     this.controlsEl.style.display = 'flex'
 
     // Clamp current page
@@ -70,20 +76,28 @@ export class PdfViewer {
       this.currentPage = 1
     }
 
-    await this.renderAllPages()
+    await this.renderAllPages(generation)
 
-    const renderTime = performance.now() - start
-    return renderTime
+    // Destroy old document after swap
+    if (oldDoc) {
+      oldDoc.destroy()
+    }
+
+    return performance.now() - start
   }
 
-  private async renderAllPages(): Promise<void> {
-    if (!this.pdfDoc || this.rendering) return
-    this.rendering = true
+  private async renderAllPages(generation: number): Promise<void> {
+    if (!this.pdfDoc) return
 
-    this.pagesContainer.innerHTML = ''
     this.pageInfo.textContent = `${this.pdfDoc.numPages} page${this.pdfDoc.numPages > 1 ? 's' : ''}`
 
+    // Render into off-screen fragment
+    const fragment = document.createDocumentFragment()
+
     for (let i = 1; i <= this.pdfDoc.numPages; i++) {
+      // Bail if a newer render started
+      if (generation !== this.renderGeneration) return
+
       const page = await this.pdfDoc.getPage(i)
       const viewport = page.getViewport({ scale: this.scale })
 
@@ -102,10 +116,16 @@ export class PdfViewer {
       await page.render({ canvasContext: ctx, viewport }).promise
 
       wrapper.appendChild(canvas)
-      this.pagesContainer.appendChild(wrapper)
+      fragment.appendChild(wrapper)
     }
 
-    this.rendering = false
+    // Final staleness check before DOM swap
+    if (generation !== this.renderGeneration) return
+
+    // Preserve scroll position, swap in one shot
+    const scrollTop = this.pagesContainer.scrollTop
+    this.pagesContainer.replaceChildren(fragment)
+    this.pagesContainer.scrollTop = scrollTop
   }
 
   private prevPage(): void {
@@ -133,7 +153,8 @@ export class PdfViewer {
   private zoom(delta: number): void {
     this.scale = Math.max(0.5, Math.min(3, this.scale + delta))
     if (this.pdfDoc) {
-      this.renderAllPages()
+      const generation = ++this.renderGeneration
+      this.renderAllPages(generation)
     }
   }
 
