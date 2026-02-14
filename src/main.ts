@@ -143,21 +143,18 @@ editor = createEditor(editorContainer, initialContent, onEditorChange)
 const fileTreeContainer = document.getElementById('file-tree-panel')!
 new FileTree(fileTreeContainer, fs, onFileSelect)
 
-// --- Forward Search (Cmd/Ctrl+Enter) ---
-document.addEventListener(
-  'keydown',
-  (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault()
-      e.stopPropagation()
-      const line = editor.getPosition()?.lineNumber
-      if (line) {
-        pdfViewer.forwardSearch(currentFile, line)
-      }
-    }
-  },
-  { capture: true },
-)
+// --- Forward Search (auto on cursor move, debounced) ---
+let forwardSearchTimer: ReturnType<typeof setTimeout> | null = null
+let lastForwardLine = -1
+editor.onDidChangeCursorPosition(() => {
+  const line = editor.getPosition()?.lineNumber
+  if (!line || line === lastForwardLine) return
+  lastForwardLine = line
+  if (forwardSearchTimer) clearTimeout(forwardSearchTimer)
+  forwardSearchTimer = setTimeout(() => {
+    pdfViewer.forwardSearch(currentFile, line)
+  }, 300)
+})
 
 // --- Layout ---
 setupDividers()

@@ -47,13 +47,17 @@ export class TextMapper {
       const tx = item.transform
       if (!tx) continue
 
+      const height = item.height ?? Math.abs(tx[3]!)
+      // Convert from PDF user space (origin bottom-left) to viewport coords (origin top-left)
+      const [vx, vy] = viewport.convertToViewportPoint(tx[4]!, tx[5]!)
+
       blocks.push({
         text: item.str,
-        x: tx[4]!,
-        // PDF coordinates: origin at bottom-left, Y up → flip to top-left origin
-        y: viewport.height - tx[5]!,
+        x: vx,
+        // vy is the baseline position; shift up by height so highlight covers the text
+        y: vy - height,
         width: item.width ?? 0,
-        height: item.height ?? Math.abs(tx[3]!),
+        height,
       })
     }
 
@@ -81,22 +85,25 @@ export class TextMapper {
     const sourceLine = lines[line - 1]
     if (!sourceLine) return null
 
-    // Extract meaningful text fragments from the source line (skip TeX commands)
-    const textFragments = this.extractTextFragments(sourceLine)
-    if (textFragments.length === 0) return null
+    // Strip TeX commands, get clean text
+    const cleanText = this.stripTexCommands(sourceLine)
+    if (cleanText.length < 3) return null
 
-    // Search all pages for matching text blocks
+    // Find the best matching block across all pages (longest overlap wins)
+    let best: { page: number; block: TextBlock; score: number } | null = null
+
     for (const [page, blocks] of this.pageBlocks) {
       for (const block of blocks) {
-        for (const frag of textFragments) {
-          if (block.text.includes(frag) || frag.includes(block.text)) {
-            return { page, x: block.x, y: block.y, width: block.width, height: block.height }
-          }
+        const score = this.matchScore(cleanText, block.text)
+        if (score > 0 && (!best || score > best.score)) {
+          best = { page, block, score }
         }
       }
     }
 
-    return null
+    if (!best) return null
+    const b = best.block
+    return { page: best.page, x: b.x, y: b.y, width: b.width, height: b.height }
   }
 
   /** Clear all indexed data */
@@ -109,9 +116,9 @@ export class TextMapper {
     let bestDist = Infinity
 
     for (const block of blocks) {
-      // Distance from click to block center
+      // Distance from click to block center (y is top of block)
       const cx = block.x + block.width / 2
-      const cy = block.y - block.height / 2
+      const cy = block.y + block.height / 2
       const dist = Math.hypot(x - cx, y - cy)
 
       if (dist < bestDist) {
@@ -139,12 +146,30 @@ export class TextMapper {
     return null
   }
 
-  private extractTextFragments(line: string): string[] {
-    // Remove TeX commands, keep plain text fragments (3+ chars)
-    const stripped = line
+  private stripTexCommands(line: string): string {
+    return line
       .replace(/\\[a-zA-Z]+(\{[^}]*\}|\[[^\]]*\])*/g, ' ')
       .replace(/[{}\\$%&]/g, '')
-    return stripped.split(/\s+/).filter((w) => w.length >= 3)
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
+
+  /** Score how well cleanText matches a PDF block's text. Higher = better match. 0 = no match. */
+  private matchScore(cleanText: string, blockText: string): number {
+    // Full containment: one contains the other entirely
+    if (blockText.includes(cleanText)) return cleanText.length * 2
+    if (cleanText.includes(blockText)) return blockText.length * 2
+
+    // Prefix/suffix overlap (at least 8 chars)
+    const minOverlap = Math.min(8, Math.min(cleanText.length, blockText.length))
+    for (let len = Math.min(cleanText.length, blockText.length); len >= minOverlap; len--) {
+      // cleanText end matches blockText start
+      if (cleanText.slice(-len) === blockText.slice(0, len)) return len
+      // cleanText start matches blockText end
+      if (cleanText.slice(0, len) === blockText.slice(-len)) return len
+    }
+
+    return 0
   }
 
   private findInSources(needle: string): SourceLocation | null {

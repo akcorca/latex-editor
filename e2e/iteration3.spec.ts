@@ -44,7 +44,7 @@ test.describe('Iteration 3: PDF ↔ Source Jump', () => {
     await expect(page.locator('#status')).toHaveText('Ready')
   })
 
-  test('forward search: Cmd+Enter highlights PDF location', async ({ page }) => {
+  test('forward search: cursor move highlights PDF location', async ({ page }) => {
     const editor = page.locator('.monaco-editor textarea')
     await editor.focus()
     await page.keyboard.press('Meta+a')
@@ -62,11 +62,11 @@ test.describe('Iteration 3: PDF ↔ Source Jump', () => {
     await expect(page.locator('#status')).toHaveText('Ready', { timeout: 15_000 })
     await expect(page.locator('.pdf-page-container canvas').first()).toBeVisible()
 
-    // Wait for any pending recompiles to settle (scheduler pendingCompile from typing during compile)
+    // Wait for any pending recompiles to settle
     await page.waitForTimeout(2_000)
     await expect(page.locator('#status')).toHaveText('Ready', { timeout: 10_000 })
 
-    // Position cursor on line 3 (the text line) via Monaco API
+    // Move cursor to line 3 (the text line) — triggers auto forward search after 300ms debounce
     await page.evaluate(() => {
       const ed = (window as any).__editor
       if (ed) {
@@ -75,10 +75,7 @@ test.describe('Iteration 3: PDF ↔ Source Jump', () => {
       }
     })
 
-    // Trigger forward search with Cmd+Enter
-    await page.keyboard.press('Meta+Enter')
-
-    // Check that a highlight overlay appeared
+    // Check that a highlight overlay appeared (300ms debounce + render time)
     const highlight = page.locator('.forward-search-highlight')
     await expect(highlight).toBeVisible({ timeout: 2_000 })
 

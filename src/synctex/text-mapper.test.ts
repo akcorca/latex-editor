@@ -7,7 +7,12 @@ function mockPage(
 ) {
   return {
     getTextContent: async () => ({ items }),
-    getViewport: (_opts: { scale: number }) => ({ height: 800, width: 600 }),
+    getViewport: (_opts: { scale: number }) => ({
+      height: 800,
+      width: 600,
+      // Standard non-rotated page: flip Y from bottom-left to top-left origin
+      convertToViewportPoint: (x: number, y: number) => [x, 800 - y],
+    }),
   } as any
 }
 
@@ -111,7 +116,8 @@ describe('TextMapper', () => {
     await mapper.indexPage(page, 1)
 
     const result = mapper.forwardLookup('main.tex', 3) // "Hello World" is line 3
-    expect(result).toEqual({ page: 1, x: 100, y: 100, width: 80, height: 12 })
+    // y = (800 - 700) - 12 = 88 (top of text, not baseline)
+    expect(result).toEqual({ page: 1, x: 100, y: 88, width: 80, height: 12 })
   })
 
   it('forward lookup returns null for TeX-only lines', async () => {
