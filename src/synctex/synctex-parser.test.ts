@@ -469,6 +469,79 @@ Count:0
     })
   })
 
+  describe('tree structure', () => {
+    it('builds parent-child relationships', () => {
+      const data = parser.parseText(FIXTURE_BASIC)
+      const roots = data.pageRoots!.get(1)!
+
+      // Root is a single vbox
+      expect(roots.length).toBe(1)
+      const vbox = roots[0]!
+      expect(vbox.type).toBe('vbox')
+      expect(vbox.parent).toBeNull()
+
+      // vbox has 2 hbox children
+      expect(vbox.children.length).toBe(2)
+      const hbox1 = vbox.children[0]!
+      const hbox2 = vbox.children[1]!
+      expect(hbox1.type).toBe('hbox')
+      expect(hbox1.line).toBe(3)
+      expect(hbox1.parent).toBe(vbox)
+      expect(hbox2.type).toBe('hbox')
+      expect(hbox2.line).toBe(10)
+      expect(hbox2.parent).toBe(vbox)
+
+      // First hbox has kern + void_hbox children
+      expect(hbox1.children.length).toBe(2)
+      expect(hbox1.children[0]!.type).toBe('kern')
+      expect(hbox1.children[0]!.parent).toBe(hbox1)
+      expect(hbox1.children[1]!.type).toBe('void_hbox')
+      expect(hbox1.children[1]!.parent).toBe(hbox1)
+    })
+
+    it('builds friend index for O(1) lookup', () => {
+      const data = parser.parseText(FIXTURE_BASIC)
+      const idx = data.friendIndex!
+
+      // Line 3 has hbox + kern + void_hbox
+      const line3 = idx.get('1:3')!
+      expect(line3.length).toBe(3)
+      expect(line3.map((n) => n.type)).toEqual(['hbox', 'kern', 'void_hbox'])
+
+      // Line 10 has hbox + void_hbox (from chapter.tex, tag=2)
+      const line10 = idx.get('2:10')!
+      expect(line10.length).toBe(2)
+    })
+
+    it('inverse search returns child line for paragraph hbox', () => {
+      const data = parser.parseText(FIXTURE_PARAGRAPH)
+
+      // The hbox is tagged line 14 but kern/glue children are tagged line 16.
+      // Clicking inside the hbox should return line 16 (from children).
+      const hbox = data.pages.get(1)!.find((n) => n.type === 'hbox')!
+      const midX = hbox.h + hbox.width / 2
+      const midY = hbox.v - hbox.height / 2
+
+      const result = parser.inverseLookup(data, 1, midX, midY)
+      expect(result).not.toBeNull()
+      expect(result!.line).toBe(16) // child line, not parent's 14
+    })
+
+    it('forward search resolves kern/glue to ancestor hbox via parent pointer', () => {
+      const data = parser.parseText(FIXTURE_PARAGRAPH)
+
+      // Line 16 has only kern/glue. Tree parent walk finds hbox(line 14).
+      const result = parser.forwardLookup(data, 'main.tex', 16)
+      expect(result).not.toBeNull()
+
+      // Should use the parent hbox bounds
+      const hboxH = 4736286 * SP_TO_PDF
+      const hboxW = 22609920 * SP_TO_PDF
+      expect(result!.x).toBeCloseTo(hboxH, 0)
+      expect(result!.width).toBeCloseTo(hboxW, 0)
+    })
+  })
+
   describe('parse (async with Uint8Array)', () => {
     it('parses uncompressed synctex data', async () => {
       const encoder = new TextEncoder()

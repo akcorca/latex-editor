@@ -1,9 +1,11 @@
 import type { VirtualFile } from '../types'
 
-const DEFAULT_TEX = `\\documentclass{article}
+const DEFAULT_TEX = `\\documentclass[twocolumn]{article}
+\\usepackage{amsmath}
+\\usepackage{amssymb}
 
-\\title{Hello, \\LaTeX!}
-\\author{Browser LaTeX Editor}
+\\title{A Brief Tour of Mathematics}
+\\author{Browser \\LaTeX{} Editor}
 \\date{\\today}
 
 \\begin{document}
@@ -11,24 +13,102 @@ const DEFAULT_TEX = `\\documentclass{article}
 \\maketitle
 
 \\section{Introduction}
-Welcome to the browser-based \\LaTeX{} editor.
-This document verifies the compilation pipeline works.
 
-\\subsection{Math}
-The quadratic formula:
-$$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$$
+This document demonstrates the browser-based \\LaTeX{} editor
+with a two-column layout. It exercises various typesetting
+features to test bidirectional SyncTeX navigation between
+the source and the rendered PDF.
 
-Inline math: $e^{i\\pi} + 1 = 0$.
+Paragraphs reflow naturally across two columns, making it
+easy to verify that inverse search (clicking the PDF) and
+forward search (moving the cursor in the editor) both
+resolve to the correct source line.
 
-\\subsection{Lists}
+\\section{Algebra}
+
+The quadratic formula gives the roots of $ax^2 + bx + c = 0$:
+\\begin{equation}
+  x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}
+\\end{equation}
+
+For the cubic $x^3 + px + q = 0$, Cardano's formula yields:
+\\begin{equation}
+  x = \\sqrt[3]{-\\frac{q}{2} + \\sqrt{\\frac{q^2}{4} + \\frac{p^3}{27}}}
+      + \\sqrt[3]{-\\frac{q}{2} - \\sqrt{\\frac{q^2}{4} + \\frac{p^3}{27}}}
+\\end{equation}
+
+\\section{Analysis}
+
+Euler's identity $e^{i\\pi} + 1 = 0$ connects five
+fundamental constants. More generally, Euler's formula states:
+\\begin{equation}
+  e^{i\\theta} = \\cos\\theta + i\\sin\\theta
+\\end{equation}
+
+The Gaussian integral evaluates to:
+\\begin{equation}
+  \\int_{-\\infty}^{\\infty} e^{-x^2}\\,dx = \\sqrt{\\pi}
+\\end{equation}
+
+Taylor's theorem with remainder:
+\\[
+  f(x) = \\sum_{k=0}^{n} \\frac{f^{(k)}(a)}{k!}(x-a)^k + R_n(x)
+\\]
+where $R_n(x) = \\frac{f^{(n+1)}(c)}{(n+1)!}(x-a)^{n+1}$ for some
+$c$ between $a$ and $x$.
+
+\\section{Linear Algebra}
+
+A $2 \\times 2$ matrix and its determinant:
+\\[
+  A = \\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}, \\qquad
+  \\det(A) = ad - bc
+\\]
+
+The eigenvalue equation $A\\mathbf{v} = \\lambda\\mathbf{v}$ leads to
+the characteristic polynomial $\\det(A - \\lambda I) = 0$.
+
+\\section{Number Theory}
+
+\\begin{enumerate}
+  \\item \\textbf{Fermat's Little Theorem.}
+    If $p$ is prime and $\\gcd(a,p)=1$, then $a^{p-1} \\equiv 1 \\pmod{p}$.
+  \\item \\textbf{Wilson's Theorem.}
+    An integer $p > 1$ is prime if and only if $(p-1)! \\equiv -1 \\pmod{p}$.
+  \\item \\textbf{Euler's Totient.}
+    $\\phi(n) = n \\prod_{p \\mid n}\\left(1 - \\frac{1}{p}\\right)$.
+\\end{enumerate}
+
+The prime counting function $\\pi(x)$ satisfies:
+\\[
+  \\pi(x) \\sim \\frac{x}{\\ln x} \\quad \\text{as } x \\to \\infty
+\\]
+
+\\section{Probability}
+
+Let $X$ be a continuous random variable with density~$f$.
 \\begin{itemize}
-  \\item First item
-  \\item Second item
-  \\item Third item
+  \\item \\textbf{Expectation:} $E[X] = \\int_{-\\infty}^{\\infty} x\\,f(x)\\,dx$
+  \\item \\textbf{Variance:} $\\operatorname{Var}(X) = E[X^2] - (E[X])^2$
+  \\item \\textbf{Normal:} $f(x) = \\frac{1}{\\sigma\\sqrt{2\\pi}}
+    \\exp\\!\\left(-\\frac{(x-\\mu)^2}{2\\sigma^2}\\right)$
 \\end{itemize}
 
+The central limit theorem states that the sum of $n$
+independent, identically distributed random variables
+with finite variance converges in distribution to a normal:
+\\[
+  \\frac{\\bar{X}_n - \\mu}{\\sigma / \\sqrt{n}}
+  \\xrightarrow{d} \\mathcal{N}(0,1)
+\\]
+
 \\section{Conclusion}
-If you can see this PDF, the engine is working!
+
+This document spans multiple pages in two-column layout,
+providing a good test bed for SyncTeX-based navigation.
+Click anywhere in the PDF to jump to the corresponding
+source line, or move the cursor in the editor to
+highlight the matching region in the PDF.
 
 \\end{document}
 `

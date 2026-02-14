@@ -1,9 +1,13 @@
 /**
  * SyncTeX file parser for PDF↔source bidirectional navigation.
  *
- * Parses the text-based .synctex format (or gzip-compressed .synctex.gz)
- * produced by pdfTeX with `-synctex=1`. Provides inverse search (PDF click →
- * source line) and forward search (source line → PDF region).
+ * Ported from the reference C implementation (synctex_parser.c by Jérôme Laurens).
+ * Tree-based parser preserving parent-child box hierarchy.
+ *
+ * Key algorithms from reference:
+ * - Inverse search: deepest container → L/R bracketing of closest children
+ * - Forward search: friend index → non-box first → nearest-line zigzag
+ * - Distance: L1 (Manhattan) not Euclidean
  *
  * Coordinate system: SyncTeX stores positions in TeX scaled points (sp).
  * We convert to PDF points (bp, 1/72 inch) for use with PDF.js viewports.
@@ -31,11 +35,20 @@ export interface SynctexNode {
   height: number
   /** Depth in PDF points (below baseline) */
   depth: number
+  /** Parent box in the SyncTeX tree (null for page-level root nodes) */
+  parent: SynctexNode | null
+  /** Child nodes within this box (empty for leaf nodes) */
+  children: SynctexNode[]
 }
 
 export interface SynctexData {
   inputs: Map<number, string>
+  /** Flat list of all nodes per page (backward compatibility) */
   pages: Map<number, SynctexNode[]>
+  /** Tree roots per page — top-level boxes from which children descend */
+  pageRoots?: Map<number, SynctexNode[]>
+  /** Friend index: "inputTag:line" → nodes, for O(1) forward lookup */
+  friendIndex?: Map<string, SynctexNode[]>
   magnification: number
   unit: number
   xOffset: number
@@ -114,8 +127,6 @@ function parseTagLineColumn(s: string): [number, number, number, string] {
  * Returns [h, v, W, H, D] (W/H/D default to 0 if absent).
  */
 function parseCoords(s: string): [number, number, number, number, number] {
-  // Full format: "h,v:W,H,D"
-  // Short format: "h,v" (for kern/glue/math without dimensions)
   const colonIdx = s.indexOf(':')
   let hvPart: string
   let whdPart: string | null
@@ -156,6 +167,117 @@ const NODE_PREFIXES: Record<string, NodeType> = {
   $: 'math',
 }
 
+/** Is this node a box type (container or void)? */
+function isBox(node: SynctexNode): boolean {
+  return (
+    node.type === 'hbox' ||
+    node.type === 'vbox' ||
+    node.type === 'void_hbox' ||
+    node.type === 'void_vbox'
+  )
+}
+
+/**
+ * Horizontal ordered distance from hit point to node (reference: _synctex_point_h_ordered_distance_v2).
+ * Positive = node is to the right of hit. Negative = node is to the left. Zero = inside.
+ */
+function hOrderedDistance(x: number, node: SynctexNode): number {
+  if (
+    node.type === 'hbox' ||
+    node.type === 'vbox' ||
+    node.type === 'void_hbox' ||
+    node.type === 'void_vbox'
+  ) {
+    const min = node.h
+    const max = min + node.width
+    if (x < min) return min - x
+    if (x > max) return max - x
+    return 0
+  }
+  if (node.type === 'kern') {
+    // Reference: kern position is AFTER the move. Distance relative to closest edge.
+    const w = node.width
+    let min: number
+    let max: number
+    if (w > 0) {
+      min = node.h - w
+      max = node.h
+    } else {
+      min = node.h
+      max = node.h - w
+    }
+    const med = (min + max) / 2
+    if (x < min) return min - x + 0.01 // penalty so other nodes preferred
+    if (x > max) return max - x - 0.01
+    return x > med ? max - x + 0.01 : min - x - 0.01
+  }
+  // glue, math: point distance
+  return node.h - x
+}
+
+/**
+ * L1 (Manhattan) distance from hit point to a node's bounding box.
+ * Reference: _synctex_point_node_distance_v2 + _synctex_distance_to_box_v2.
+ */
+function pointNodeDistance(x: number, y: number, node: SynctexNode): number {
+  let minH: number
+  let maxH: number
+  let minV: number
+  let maxV: number
+
+  if (node.type === 'hbox' || node.type === 'vbox') {
+    minH = node.h
+    maxH = minH + node.width
+    minV = node.v - node.height
+    maxV = node.v + node.depth
+  } else if (node.type === 'void_hbox' || node.type === 'void_vbox') {
+    // Best of distances from left edge and right edge
+    const dLeft = distToBox(x, y, node.h, node.h, node.v - node.height, node.v + node.depth)
+    const dRight = distToBox(
+      x,
+      y,
+      node.h + node.width,
+      node.h + node.width,
+      node.v - node.height,
+      node.v + node.depth,
+    )
+    return Math.min(dLeft, dRight)
+  } else if (node.type === 'kern') {
+    const parentH = node.parent ? node.parent.height : 10
+    const dA = distToBox(x, y, node.h, node.h, node.v - parentH, node.v)
+    const dB = distToBox(x, y, node.h - node.width, node.h - node.width, node.v - parentH, node.v)
+    return Math.min(dA, dB)
+  } else {
+    // glue, math: vertical extent from parent
+    const parentH = node.parent ? node.parent.height : 10
+    minH = node.h
+    maxH = node.h
+    maxV = node.v
+    minV = maxV - parentH
+    return distToBox(x, y, minH, maxH, minV, maxV)
+  }
+
+  return distToBox(x, y, minH, maxH, minV, maxV)
+}
+
+/** L1 distance from point to axis-aligned box (reference: _synctex_distance_to_box_v2) */
+function distToBox(
+  x: number,
+  y: number,
+  minH: number,
+  maxH: number,
+  minV: number,
+  maxV: number,
+): number {
+  let dh = 0
+  let dv = 0
+  if (x < minH) dh = minH - x
+  else if (x > maxH) dh = x - maxH
+  if (y < minV) dv = minV - y
+  else if (y > maxV) dv = y - maxV
+  return dh + dv
+}
+
 export class SynctexParser {
   /**
    * Parse raw synctex data (possibly gzip-compressed) into structured data.
@@ -167,13 +289,20 @@ export class SynctexParser {
   }
 
   /**
-   * Parse synctex text content directly (for testing without gzip).
+   * Parse synctex text content into a tree-structured representation.
+   * Uses a stack to track open vbox/hbox containers, building parent-child
+   * relationships and a friend index for O(1) forward lookup.
    */
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: parser inherently complex, tree rewrite planned
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: stack-based tree parser with preamble handling
   parseText(text: string): SynctexData {
+    const pageRoots = new Map<number, SynctexNode[]>()
+    const friendIndex = new Map<string, SynctexNode[]>()
+
     const result: SynctexData = {
       inputs: new Map(),
       pages: new Map(),
+      pageRoots,
+      friendIndex,
       magnification: 1000,
       unit: 1,
       xOffset: 0,
@@ -183,6 +312,7 @@ export class SynctexParser {
     const lines = text.split('\n')
     let currentPage = 0
     let inContent = false
+    const stack: SynctexNode[] = []
 
     for (const line of lines) {
       if (!line) continue
@@ -199,7 +329,6 @@ export class SynctexParser {
           if (secondColon !== -1) {
             const tag = parseInt(line.slice(firstColon + 1, secondColon), 10)
             let name = line.slice(secondColon + 1)
-            // Normalize: strip leading "./"
             if (name.startsWith('./')) name = name.slice(2)
             result.inputs.set(tag, name)
           }
@@ -216,9 +345,8 @@ export class SynctexParser {
       }
 
       // Postamble — stop parsing
-      if (line.startsWith('Postamble:') || line === 'Postamble:') break
+      if (line.startsWith('Postamble:')) break
 
-      // Content section
       const firstChar = line[0]!
 
       // Page boundaries
@@ -226,13 +354,21 @@ export class SynctexParser {
         currentPage = parseInt(line.slice(1), 10)
         if (!result.pages.has(currentPage)) {
           result.pages.set(currentPage, [])
+          pageRoots.set(currentPage, [])
         }
+        stack.length = 0
         continue
       }
-      if (firstChar === '}') continue
+      if (firstChar === '}') {
+        stack.length = 0
+        continue
+      }
 
-      // Close brackets — no data to extract
-      if (firstChar === ']' || firstChar === ')') continue
+      // Close brackets — pop the tree stack
+      if (firstChar === ']' || firstChar === ')') {
+        if (stack.length > 0) stack.pop()
+        continue
+      }
 
       // Anchor lines
       if (firstChar === '!') continue
@@ -241,14 +377,11 @@ export class SynctexParser {
       const nodeType = NODE_PREFIXES[firstChar]
       if (!nodeType || currentPage === 0) continue
 
-      const content =
-        firstChar === '[' || firstChar === '(' || firstChar === '$' ? line.slice(1) : line.slice(1)
-
+      const content = line.slice(1)
       const [tag, sourceLine, column, coordStr] = parseTagLineColumn(content)
       if (!coordStr && sourceLine === 0) continue
 
       const [h, v, W, H, D] = parseCoords(coordStr)
-
       const unit = result.unit
       const mag = result.magnification
 
@@ -263,87 +396,127 @@ export class SynctexParser {
         width: spToPdfPt(Math.abs(W), unit, mag),
         height: spToPdfPt(Math.abs(H), unit, mag),
         depth: spToPdfPt(Math.abs(D), unit, mag),
+        parent: null,
+        children: [],
       }
 
+      // Tree structure: attach to parent or mark as page root
+      if (stack.length > 0) {
+        const parent = stack[stack.length - 1]!
+        node.parent = parent
+        parent.children.push(node)
+      } else {
+        pageRoots.get(currentPage)!.push(node)
+      }
+
+      // Container boxes ([vbox] and (hbox)) go on the stack
+      if (firstChar === '[' || firstChar === '(') {
+        stack.push(node)
+      }
+
+      // Flat page list (backward compatibility)
       result.pages.get(currentPage)!.push(node)
+
+      // Friend index for O(1) forward lookup
+      if (sourceLine > 0) {
+        const key = `${tag}:${sourceLine}`
+        let bucket = friendIndex.get(key)
+        if (!bucket) {
+          bucket = []
+          friendIndex.set(key, bucket)
+        }
+        bucket.push(node)
+      }
     }
 
     return result
   }
 
   /**
-   * Inverse search: given a click position on a PDF page, find the source location.
+   * Inverse search: PDF click → source location.
+   * Port of synctex_iterator_new_edit from reference.
    *
-   * @param data - Parsed synctex data
-   * @param page - 1-based page number
-   * @param x - X position in PDF points (from left edge)
-   * @param y - Y position in PDF points (from top edge, downward)
-   * @returns Source location or null if no match found
+   * Algorithm:
+   * 1. Scan all hboxes on the page, find smallest containing one
+   * 2. Drill into deepest container (DFS)
+   * 3. Find L/R closest children using horizontal ordered distance
+   * 4. Pick the best based on line number and distance
+   * 5. Fallback: closest deep child using L1 distance
    */
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: search heuristic, tree rewrite planned
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: faithful port of reference algorithm
   inverseLookup(data: SynctexData, page: number, x: number, y: number): SourceLocation | null {
     const nodes = data.pages.get(page)
     if (!nodes || nodes.length === 0) return null
 
-    // First try to find an hbox/void_hbox that contains the click point
-    let bestContaining: SynctexNode | null = null
-    let bestContainingArea = Infinity
-
+    // Step 1: Find smallest containing hbox (scan ALL hboxes on page via flat list)
+    // Reference: browse next_hbox linked list
+    let container: SynctexNode | null = null
     for (const node of nodes) {
-      if (node.type !== 'hbox' && node.type !== 'void_hbox') continue
-      if (node.width === 0 || node.height + node.depth === 0) continue
-
-      const totalHeight = node.height + node.depth
-      const top = node.v - node.height
-      if (x >= node.h && x <= node.h + node.width && y >= top && y <= top + totalHeight) {
-        const area = node.width * totalHeight
-        if (area < bestContainingArea) {
-          bestContaining = node
-          bestContainingArea = area
-        }
+      if (node.type !== 'hbox') continue
+      if (this.pointInBox(x, y, node)) {
+        container = container ? this.smallestContainer(node, container) : node
       }
     }
 
-    if (bestContaining) {
-      const filename = data.inputs.get(bestContaining.input) ?? ''
-      return { file: filename, line: bestContaining.line }
+    if (container) {
+      // Step 2: Drill into deepest container (reference: _synctex_eq_deepest_container_v2)
+      container = this.deepestContainer(x, y, container)
+
+      // Step 3: Find L/R closest children (reference: _synctex_eq_get_closest_children_in_box_v2)
+      const { l, r } = this.getClosestChildrenInBox(x, y, container)
+
+      // Step 4: Pick best result (reference lines 7338-7377)
+      const target = this.pickBestLR(l, r, x, y)
+      if (target) {
+        const filename = data.inputs.get(target.input) ?? ''
+        return { file: filename, line: target.line }
+      }
+
+      // Container itself as fallback
+      const filename = data.inputs.get(container.input) ?? ''
+      return { file: filename, line: container.line }
     }
 
-    // Fallback: find the nearest node by distance
+    // Step 5: "Not lucky" — find closest deep child from page roots
+    const roots = data.pageRoots?.get(page)
+    if (roots && roots.length > 0) {
+      const best = this.closestDeepChild(x, y, roots[0]!)
+      if (best) {
+        const filename = data.inputs.get(best.input) ?? ''
+        return { file: filename, line: best.line }
+      }
+    }
+
+    // Step 6: Last resort — nearest node by L1 distance
     let bestNode: SynctexNode | null = null
     let bestDist = Infinity
-
     for (const node of nodes) {
-      // Skip nodes without source line info
       if (node.line === 0) continue
-
-      const centerX = node.h + node.width / 2
-      const centerY = node.v - node.height / 2 + node.depth / 2
-      const dist = Math.hypot(x - centerX, y - centerY)
-
+      const dist = pointNodeDistance(x, y, node)
       if (dist < bestDist) {
         bestDist = dist
         bestNode = node
       }
     }
-
     if (!bestNode) return null
-
     const filename = data.inputs.get(bestNode.input) ?? ''
     return { file: filename, line: bestNode.line }
   }
 
   /**
-   * Forward search: given a source file and line, find the corresponding PDF region.
+   * Forward search: source line → PDF region.
+   * Port of synctex_iterator_new_display from reference.
    *
-   * @param data - Parsed synctex data
-   * @param file - Source filename (e.g., "main.tex")
-   * @param line - 1-based source line number
-   * @returns PDF location or null if no match found
+   * Algorithm:
+   * 1. Find input tag for the file
+   * 2. Try exact line match via friend index
+   * 3. If no match, zigzag to nearby lines: line±1, ±2, ... up to 100 tries
+   * 4. For each line: non-box nodes first (reference: exclude_box=YES),
+   *    then include boxes as fallback
    */
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: search heuristic, tree rewrite planned
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: nearest-line zigzag with two-pass search
   forwardLookup(data: SynctexData, file: string, line: number): PdfLocation | null {
-    // Find the input tag for this file
+    // Find input tag for this file
     let inputTag = -1
     for (const [tag, name] of data.inputs) {
       if (name === file || name.endsWith(`/${file}`)) {
@@ -353,154 +526,312 @@ export class SynctexParser {
     }
     if (inputTag === -1) return null
 
-    // Collect matching nodes, preferring hbox nodes (actual text lines)
-    // over vbox/kern/glue which can span large areas or have zero dimensions
-    const hboxNodes: SynctexNode[] = []
-    const otherNodes: SynctexNode[] = []
-    let bestPage = 0
-
-    for (const [page, nodes] of data.pages) {
-      for (const node of nodes) {
-        if (node.input !== inputTag || node.line !== line) continue
-        if (!bestPage) bestPage = page
-        if (page !== bestPage) continue
-
-        if (node.type === 'hbox' || node.type === 'void_hbox') {
-          hboxNodes.push(node)
-        } else {
-          otherNodes.push(node)
-        }
+    // Nearest-line zigzag (reference: synctex_iterator_new_display lines 7510-7572)
+    // Tries: line, line+1, line-1, line+2, line-2, ...
+    let currentLine = line
+    let lineOffset = 1
+    for (let tries = 0; tries < 100; tries++) {
+      if (currentLine > 0) {
+        const result = this.forwardForLine(data, inputTag, currentLine)
+        if (result) return result
       }
-      if (bestPage) break
-    }
-
-    // Log all matching nodes for diagnostics
-    console.log(`[synctex-fwd] line=${line}: ${hboxNodes.length} hbox, ${otherNodes.length} other`)
-    for (const n of hboxNodes) {
-      console.log(
-        `  [${n.type}] h=${n.h.toFixed(1)} v=${n.v.toFixed(1)} w=${n.width.toFixed(1)} H=${n.height.toFixed(1)} D=${n.depth.toFixed(1)}`,
-      )
-    }
-    for (const n of otherNodes) {
-      console.log(
-        `  [${n.type}] h=${n.h.toFixed(1)} v=${n.v.toFixed(1)} w=${n.width.toFixed(1)} H=${n.height.toFixed(1)} D=${n.depth.toFixed(1)}`,
-      )
-    }
-
-    // When only kern/glue/math nodes found (no hbox), they are zero-dimension
-    // markers inside a parent hbox tagged with a different line (from paragraph
-    // breaking). Find the smallest enclosing hbox at the same baseline.
-    if (hboxNodes.length === 0 && otherNodes.length > 0) {
-      const targetV = otherNodes[0]!.v
-      const nodeHs = otherNodes.map((n) => n.h)
-      const minNodeH = Math.min(...nodeHs)
-      const maxNodeH = Math.max(...nodeHs)
-      const allPageNodes = data.pages.get(bestPage) ?? []
-
-      let enclosing: SynctexNode | null = null
-      let enclosingArea = Infinity
-
-      for (const node of allPageNodes) {
-        if (node.type !== 'hbox' || node.width <= 0) continue
-        // Baseline must match (within 1pt for float rounding)
-        if (Math.abs(node.v - targetV) > 1) continue
-        // Must horizontally contain all kern/glue positions
-        if (node.h > minNodeH || node.h + node.width < maxNodeH) continue
-
-        const area = node.width * Math.max(node.height + node.depth, 1)
-        if (area < enclosingArea) {
-          enclosing = node
-          enclosingArea = area
-        }
-      }
-
-      if (enclosing) {
-        console.log(
-          `  enclosing hbox: h=${enclosing.h.toFixed(1)} v=${enclosing.v.toFixed(1)} w=${enclosing.width.toFixed(1)} H=${enclosing.height.toFixed(1)} D=${enclosing.depth.toFixed(1)}`,
-        )
-        const top = enclosing.v - enclosing.height
-        const height = Math.max(enclosing.height + enclosing.depth, 10)
-        return {
-          page: bestPage,
-          x: enclosing.h,
-          y: top,
-          width: enclosing.width,
-          height,
-        }
+      currentLine += lineOffset
+      lineOffset = lineOffset < 0 ? -(lineOffset - 1) : -(lineOffset + 1)
+      // Skip non-positive lines (reference: line 7566-7569)
+      if (currentLine <= 0) {
+        currentLine += lineOffset
+        lineOffset = lineOffset < 0 ? -(lineOffset - 1) : -(lineOffset + 1)
       }
     }
+    return null
+  }
 
-    // Use hbox nodes if available, otherwise fall back to all nodes
-    let candidates = hboxNodes.length > 0 ? hboxNodes : otherNodes
-    if (candidates.length === 0) return null
+  /** Forward search for a specific line. Two-pass: non-box first, then all. */
+  private forwardForLine(data: SynctexData, inputTag: number, line: number): PdfLocation | null {
+    const friends = data.friendIndex?.get(`${inputTag}:${line}`)
+    if (!friends || friends.length === 0) return null
 
-    // If multiple hbox nodes, use gap-based clustering to split truly distant
-    // groups (e.g. same line number appearing far apart) while keeping wrapped
-    // paragraph lines together (consecutive lines with small v gaps).
-    if (candidates.length > 1) {
-      candidates.sort((a, b) => a.v - b.v)
-      const refHeight = candidates.find((n) => n.height > 0)?.height ?? 10
-      // Allow gaps up to 3x line height (covers baselineskip for wrapped lines)
-      const maxAllowedGap = refHeight * 3
+    // First pass: non-box nodes only (reference: exclude_box=YES)
+    const nonBox = friends.filter((n) => !isBox(n))
+    if (nonBox.length > 0) {
+      const result = this.forwardFromNodes(nonBox)
+      if (result) return result
+    }
 
-      const clusters: SynctexNode[][] = [[candidates[0]!]]
-      for (let i = 1; i < candidates.length; i++) {
-        const gap = candidates[i]!.v - candidates[i - 1]!.v
-        if (gap > maxAllowedGap) {
-          clusters.push([candidates[i]!])
-        } else {
-          clusters[clusters.length - 1]!.push(candidates[i]!)
-        }
-      }
+    // Second pass: include all nodes (reference: exclude_box=NO)
+    return this.forwardFromNodes(friends)
+  }
 
-      if (clusters.length > 1) {
-        candidates = clusters.reduce((best, c) => (c.length > best.length ? c : best))
-        console.log(
-          `  split into ${clusters.length} clusters, using largest (${candidates.length} nodes)`,
-        )
+  /** Compute forward search result from matched nodes */
+  private forwardFromNodes(nodes: SynctexNode[]): PdfLocation | null {
+    // Filter to first page
+    const firstPage = nodes[0]!.page
+    const pageNodes = nodes.filter((n) => n.page === firstPage)
+    if (pageNodes.length === 0) return null
+
+    // For leaf nodes, resolve to ancestor hbox for proper bounds
+    const resolvedBoxes = new Set<SynctexNode>()
+    const directBoxes: SynctexNode[] = []
+
+    for (const node of pageNodes) {
+      if (node.type === 'hbox' || node.type === 'void_hbox') {
+        directBoxes.push(node)
+      } else if (node.type === 'vbox' || node.type === 'void_vbox') {
+        // skip vbox — too broad
       } else {
-        console.log(
-          `  all ${candidates.length} nodes in one cluster (maxGap < ${maxAllowedGap.toFixed(1)})`,
-        )
+        // Leaf node: walk to ancestor hbox
+        const hbox = this.findAncestorHbox(node)
+        if (hbox) resolvedBoxes.add(hbox)
       }
     }
 
-    // Compute bounding box from the selected candidates
+    // Prefer resolved boxes from leaves (more precise — matches actual content)
+    if (resolvedBoxes.size > 0) {
+      return this.bboxFromNodes([...resolvedBoxes], firstPage)
+    }
+    if (directBoxes.length > 0) {
+      return this.bboxFromNodes(directBoxes, firstPage)
+    }
+
+    // Fallback: use whatever we have
+    return this.bboxFromNodes(pageNodes, firstPage)
+  }
+
+  /** Point-in-box test (reference: _synctex_point_in_box_v2) */
+  private pointInBox(x: number, y: number, node: SynctexNode): boolean {
+    return hOrderedDistance(x, node) === 0 && this.vOrderedDistance(y, node) === 0
+  }
+
+  /** Vertical ordered distance (reference: _synctex_point_v_ordered_distance_v2) */
+  private vOrderedDistance(y: number, node: SynctexNode): number {
+    let min: number
+    let max: number
+    if (node.type === 'hbox') {
+      min = node.v - node.height
+      max = node.v + node.depth
+    } else if (node.type === 'vbox' || node.type === 'void_vbox' || node.type === 'void_hbox') {
+      min = node.v - node.height
+      max = node.v + node.depth
+    } else {
+      // Leaf nodes: use parent's vertical extent
+      const p = node.parent
+      if (p) {
+        min = node.v - p.height
+        max = node.v + p.depth
+      } else {
+        return node.v - y
+      }
+    }
+    if (y < min) return min - y
+    if (y > max) return max - y
+    return 0
+  }
+
+  /** Smallest container by area (reference: _synctex_smallest_container_v2) */
+  private smallestContainer(a: SynctexNode, b: SynctexNode): SynctexNode {
+    const areaA = a.width * (a.height + a.depth)
+    const areaB = b.width * (b.height + b.depth)
+    if (areaA < areaB) return a
+    if (areaA > areaB) return b
+    // Tie-break: prefer smaller height
+    if (a.height + a.depth < b.height + b.depth) return a
+    return b
+  }
+
+  /**
+   * Deepest container: DFS to find the deepest box containing the hit point.
+   * Reference: _synctex_eq_deepest_container_v2
+   */
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: faithful port of reference C algorithm
+  private deepestContainer(x: number, y: number, node: SynctexNode): SynctexNode {
+    if (node.children.length === 0) return node
+
+    // Go deep first — check children for containment
+    for (const child of node.children) {
+      if (this.pointInBox(x, y, child)) {
+        return this.deepestContainer(x, y, child)
+      }
+    }
+
+    // For vboxes: find closest child with children (reference lines 8063-8082)
+    if (node.type === 'vbox') {
+      let bestChild: SynctexNode | null = null
+      let bestDist = Infinity
+      for (const child of node.children) {
+        if (child.children.length > 0) {
+          const d = pointNodeDistance(x, y, child)
+          if (d < bestDist) {
+            bestDist = d
+            bestChild = child
+          }
+        }
+      }
+      if (bestChild) return bestChild
+    }
+
+    return node
+  }
+
+  /**
+   * Find L/R closest children within a box using horizontal ordered distance.
+   * Reference: __synctex_eq_get_closest_children_in_hbox_v2
+   */
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: L/R bracketing from reference
+  private getClosestChildrenInBox(
+    x: number,
+    y: number,
+    box: SynctexNode,
+  ): { l: SynctexNode | null; r: SynctexNode | null } {
+    let lNode: SynctexNode | null = null
+    let lDist = Infinity
+    let rNode: SynctexNode | null = null
+    let rDist = Infinity
+
+    for (const child of box.children) {
+      const d = hOrderedDistance(x, child)
+
+      if (d > 0) {
+        // Child is to the RIGHT of hit point
+        if (d < rDist || (d === rDist && rNode && child.line < rNode.line)) {
+          rNode = child
+          rDist = d
+        }
+      } else if (d === 0) {
+        // Hit point is inside child — recurse if it's a container
+        if (child.children.length > 0) {
+          return this.getClosestChildrenInBox(x, y, child)
+        }
+        lNode = child
+        lDist = 0
+      } else {
+        // Child is to the LEFT (d < 0)
+        const absDist = -d
+        if (absDist < lDist || (absDist === lDist && lNode && child.line < lNode.line)) {
+          lNode = child
+          lDist = absDist
+        }
+      }
+    }
+
+    // Try to narrow results by drilling deeper (reference lines 8180-8197)
+    if (lNode && lNode.children.length > 0) {
+      const deeper = this.closestDeepChild(x, y, lNode)
+      if (deeper) lNode = deeper
+    }
+    if (rNode && rNode.children.length > 0) {
+      const deeper = this.closestDeepChild(x, y, rNode)
+      if (deeper) rNode = deeper
+    }
+
+    return { l: lNode, r: rNode }
+  }
+
+  /**
+   * Pick the best of L/R results.
+   * Reference: synctex_iterator_new_edit lines 7338-7377
+   */
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: faithful port of reference C algorithm
+  private pickBestLR(
+    l: SynctexNode | null,
+    r: SynctexNode | null,
+    x: number,
+    y: number,
+  ): SynctexNode | null {
+    if (l && r) {
+      // Different source locations: prefer smaller line number
+      if (l.input !== r.input || l.line !== r.line) {
+        if (r.line < l.line) return r
+        if (l.line < r.line) return l
+        // Same line, different files — prefer closer
+        const dL = pointNodeDistance(x, y, l)
+        const dR = pointNodeDistance(x, y, r)
+        return dL <= dR ? l : r
+      }
+      // Same source location: prefer closer
+      const dL = pointNodeDistance(x, y, l)
+      const dR = pointNodeDistance(x, y, r)
+      return dL <= dR ? l : r
+    }
+    return l ?? r
+  }
+
+  /**
+   * Recursive closest deep child by L1 distance.
+   * Reference: __synctex_closest_deep_child_v2
+   */
+  private closestDeepChild(x: number, y: number, node: SynctexNode): SynctexNode | null {
+    if (node.children.length === 0) return null
+
+    let best: SynctexNode | null = null
+    let bestDist = Infinity
+
+    for (const child of node.children) {
+      let nd: SynctexNode
+      let dist: number
+
+      if (child.children.length > 0) {
+        // Recurse into container
+        const deep = this.closestDeepChild(x, y, child)
+        if (deep) {
+          nd = deep
+          dist = pointNodeDistance(x, y, deep)
+        } else {
+          nd = child
+          dist = pointNodeDistance(x, y, child)
+        }
+      } else {
+        nd = child
+        dist = pointNodeDistance(x, y, child)
+      }
+
+      // Reference: prefer non-kern when equidistant
+      if (dist < bestDist || (dist === bestDist && nd.type !== 'kern')) {
+        best = nd
+        bestDist = dist
+      }
+    }
+
+    return best
+  }
+
+  /** Walk up from a leaf to find the nearest ancestor hbox */
+  private findAncestorHbox(node: SynctexNode): SynctexNode | null {
+    let current = node.parent
+    while (current) {
+      if (current.type === 'hbox') return current
+      current = current.parent
+    }
+    return null
+  }
+
+  /** Compute a bounding box enclosing the given nodes */
+  private bboxFromNodes(nodes: SynctexNode[], page: number): PdfLocation {
     let minH = Infinity
     let maxH = -Infinity
-    let minV = Infinity
-    let maxVBottom = -Infinity
+    let minTop = Infinity
+    let maxBottom = -Infinity
 
-    for (const node of candidates) {
+    for (const node of nodes) {
       const top = node.v - node.height
       const bottom = node.v + node.depth
-
       if (node.h < minH) minH = node.h
       if (node.h + node.width > maxH) maxH = node.h + node.width
-      if (top < minV) minV = top
-      if (bottom > maxVBottom) maxVBottom = bottom
+      if (top < minTop) minTop = top
+      if (bottom > maxBottom) maxBottom = bottom
     }
 
-    // If height collapsed (all zero-dimension nodes), estimate from baseline
-    if (maxVBottom - minV < 2) {
-      const defaultLineHeight = 12
-      minV = candidates[0]!.v - defaultLineHeight
-      maxVBottom = candidates[0]!.v + 3
+    // Zero-dimension leaf nodes: estimate height from baseline
+    if (maxBottom - minTop < 2) {
+      minTop = nodes[0]!.v - 12
+      maxBottom = nodes[0]!.v + 3
     }
-
-    const width = Math.max(maxH - minH, 10)
-    const height = Math.max(maxVBottom - minV, 10)
-
-    console.log(
-      `  bbox: x=${minH.toFixed(1)} y=${minV.toFixed(1)} w=${width.toFixed(1)} h=${height.toFixed(1)}`,
-    )
 
     return {
-      page: bestPage,
+      page,
       x: minH,
-      y: minV,
-      width,
-      height,
+      y: minTop,
+      width: Math.max(maxH - minH, 10),
+      height: Math.max(maxBottom - minTop, 10),
     }
   }
 }
