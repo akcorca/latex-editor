@@ -15,6 +15,7 @@
     "test:watch": "vitest",
     "lint:py": "cd texlive-server && uvx ruff check .",
     "format:py": "cd texlive-server && uvx ruff format .",
+    "test:e2e": "playwright test",
     "download-engine": "bash scripts/download-engine.sh"
   },
   "dependencies": {
@@ -23,6 +24,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.15",
+    "@playwright/test": "^1.58.2",
     "@typescript/native-preview": "^7.0.0-dev.20260213.1",
     "lefthook": "^2.1.1",
     "typescript": "^5.7.0",

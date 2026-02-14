@@ -267,10 +267,10 @@ Tectonic WASM은 63% C 의존성(ICU4C/harfbuzz/freetype)으로 브라우저 WAS
 - [x] 두 이미지 모두 빌드 성공
 - [x] `docker compose up` 으로 전체 환경 기동 검증
 - [x] 브라우저에서 앱 로드 + 자동 컴파일 확인 (엔진 46ms, 컴파일 251ms)
-- [ ] 에디터 수정 → PDF 갱신 (2-5초 내)
-- [ ] 파일 트리 동작 확인
-- [ ] TeX 에러 → error log 표시 + 라인 점프 확인
-- [ ] amsmath 등 추가 패키지 컴파일 확인 (texlive 서버 경유)
+- [x] 에디터 수정 → PDF 갱신 (1.8s — E2E 자동 검증 통과)
+- [x] 파일 트리 동작 확인 (생성/선택/삭제 — E2E 자동 검증 통과)
+- [x] TeX 에러 → error log 표시 + 라인 점프 확인 (E2E 자동 검증 통과)
+- [x] amsmath 등 추가 패키지 컴파일 확인 (texlive 서버 경유 — E2E 자동 검증 통과)
 
 **KPI:** 작은 문서 기준 "편집→PDF 갱신" 2–5초라도 일단 동작
 
