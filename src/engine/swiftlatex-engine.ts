@@ -96,6 +96,22 @@ export class SwiftLatexEngine implements TexEngine {
     return result
   }
 
+  async readFile(path: string): Promise<string | null> {
+    this.checkInitialized()
+
+    return new Promise<string | null>((resolve) => {
+      this.worker!.onmessage = (ev) => {
+        const data = ev.data
+        if (data.cmd !== 'readfile') return
+
+        this.worker!.onmessage = () => {}
+        resolve(data.result === 'ok' ? data.data : null)
+      }
+
+      this.worker!.postMessage({ cmd: 'readfile', url: path })
+    })
+  }
+
   isReady(): boolean {
     return this.status === 'ready'
   }

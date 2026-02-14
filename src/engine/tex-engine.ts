@@ -6,6 +6,7 @@ export interface TexEngine {
   mkdir(path: string): void
   setMainFile(path: string): void
   compile(): Promise<CompileResult>
+  readFile(path: string): Promise<string | null>
   isReady(): boolean
   getStatus(): EngineStatus
   flushCache(): void

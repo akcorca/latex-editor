@@ -19,6 +19,9 @@ const engine = new SwiftLatexEngine()
 const fs = new VirtualFS()
 const statusEl = document.getElementById('status')!
 
+// Expose for E2E testing and dev tools
+;(globalThis as Record<string, unknown>).__engine = engine
+
 function setStatus(status: AppStatus, detail?: string): void {
   statusEl.className = status
   const labels: Record<AppStatus, string> = {

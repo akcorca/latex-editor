@@ -22,6 +22,7 @@ function mockEngine(compileResult?: CompileResult): TexEngine {
     mkdir: vi.fn(),
     setMainFile: vi.fn(),
     compile: vi.fn().mockResolvedValue(result),
+    readFile: vi.fn().mockResolvedValue(null),
     isReady: vi.fn().mockReturnValue(true),
     getStatus: vi.fn().mockReturnValue('ready'),
     flushCache: vi.fn(),
