@@ -3,6 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "./dist/latex-editor.js",
+  "module": "./dist/latex-editor.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/latex-editor.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./style.css": "./dist/latex-editor.css"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsgo && vite build",
@@ -16,7 +26,8 @@
     "lint:py": "cd texlive-server && uvx ruff check .",
     "format:py": "cd texlive-server && uvx ruff format .",
     "test:e2e": "playwright test",
-    "download-engine": "bash scripts/download-engine.sh"
+    "download-engine": "bash scripts/download-engine.sh",
+    "build:lib": "BUILD_MODE=lib vite build"
   },
   "dependencies": {
     "monaco-editor": "^0.52.0",

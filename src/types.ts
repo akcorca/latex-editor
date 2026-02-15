@@ -27,3 +27,24 @@ export interface VirtualFile {
 export type EngineStatus = 'unloaded' | 'loading' | 'ready' | 'compiling' | 'error'
 
 export type AppStatus = EngineStatus | 'rendering'
+
+// --- LatexEditor component API ---
+
+export interface LatexEditorOptions {
+  /** TexLive server endpoint URL. Defaults to auto-detected from BASE_URL. */
+  texliveUrl?: string
+  /** Main TeX file name. Defaults to 'main.tex'. */
+  mainFile?: string
+  /** Initial project files. Keys are file paths, values are content. */
+  files?: Record<string, string | Uint8Array>
+  /** Register a service worker for texlive package caching. Defaults to true. */
+  serviceWorker?: boolean
+  /** Base URL for WASM/static assets. Defaults to `import.meta.env.BASE_URL`. */
+  assetBaseUrl?: string
+}
+
+export interface LatexEditorEventMap {
+  compile: { result: CompileResult }
+  filechange: { path: string; content: string | Uint8Array }
+  status: { status: AppStatus }
+}

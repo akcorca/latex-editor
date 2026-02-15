@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LaTeX Editor — Embed Example</title>
+  <link rel="stylesheet" href="../dist/latex-editor.css" />
+  <style>
+    body { margin: 0; }
+    #container { width: 100vw; height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="container"></div>
+  <script type="module">
+    import { LatexEditor } from '../dist/latex-editor.js'
+
+    const editor = new LatexEditor(document.getElementById('container'), {
+      files: {
+        'main.tex': `\\documentclass{article}
+\\begin{document}
+Hello from an embedded \\LaTeX{} editor!
+\\end{document}
+`,
+      },
+    })
+
+    editor.on('compile', (e) => {
+      console.log('Compiled:', e.result.success ? 'OK' : 'FAIL')
+    })
+
+    editor.init()
+  </script>
+</body>
+</html>

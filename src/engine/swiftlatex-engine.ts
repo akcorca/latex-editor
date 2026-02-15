@@ -2,13 +2,26 @@ import type { CompileResult, EngineStatus } from '../types'
 import { parseTexErrors } from './parse-errors'
 import type { TexEngine } from './tex-engine'
 
-const ENGINE_PATH = `${import.meta.env.BASE_URL}swiftlatex/swiftlatexpdftex.js`
-const FORMAT_PATH = `${import.meta.env.BASE_URL}swiftlatex/swiftlatexpdftex.fmt`
+export interface SwiftLatexEngineOptions {
+  /** Base URL for WASM assets. Defaults to `import.meta.env.BASE_URL`. */
+  assetBaseUrl?: string
+  /** TexLive server endpoint. Defaults to `${location.origin}${BASE_URL}texlive/`. */
+  texliveUrl?: string
+}
 
 export class SwiftLatexEngine implements TexEngine {
   private worker: Worker | null = null
   private status: EngineStatus = 'unloaded'
-  private texliveUrl: string | null = null
+  private texliveUrl: string | null
+  private enginePath: string
+  private formatPath: string
+
+  constructor(options?: SwiftLatexEngineOptions) {
+    const base = options?.assetBaseUrl ?? import.meta.env.BASE_URL
+    this.enginePath = `${base}swiftlatex/swiftlatexpdftex.js`
+    this.formatPath = `${base}swiftlatex/swiftlatexpdftex.fmt`
+    this.texliveUrl = options?.texliveUrl ?? null
+  }
 
   /** Set a custom TexLive endpoint before init(). Default is baked into the worker. */
   setTexliveUrl(url: string): void {
@@ -23,7 +36,7 @@ export class SwiftLatexEngine implements TexEngine {
     this.status = 'loading'
 
     await new Promise<void>((resolve, reject) => {
-      this.worker = new Worker(ENGINE_PATH)
+      this.worker = new Worker(this.enginePath)
 
       this.worker.onmessage = (ev) => {
         const data = ev.data
@@ -60,7 +73,7 @@ export class SwiftLatexEngine implements TexEngine {
 
   private async preloadFormat(): Promise<void> {
     try {
-      const resp = await fetch(FORMAT_PATH)
+      const resp = await fetch(this.formatPath)
       if (!resp.ok) return
       const buf = await resp.arrayBuffer()
       await new Promise<void>((resolve) => {

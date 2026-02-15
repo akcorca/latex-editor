@@ -1,19 +1,28 @@
-export function setupDividers(): void {
-  setupDivider('divider-left', 'file-tree-panel', 'editor-panel', 120, 400)
-  setupDivider('divider-right', 'editor-panel', 'viewer-panel', 200, undefined)
+export function setupDividers(root?: HTMLElement): void {
+  const el = root ?? document
+  setupDivider(
+    el.querySelector<HTMLElement>('.le-divider-left')!,
+    el.querySelector<HTMLElement>('.le-file-tree')!,
+    el.querySelector<HTMLElement>('.le-main')!,
+    120,
+    400,
+  )
+  setupDivider(
+    el.querySelector<HTMLElement>('.le-divider-right')!,
+    el.querySelector<HTMLElement>('.le-editor')!,
+    el.querySelector<HTMLElement>('.le-main')!,
+    200,
+    undefined,
+  )
 }
 
 function setupDivider(
-  dividerId: string,
-  leftId: string,
-  _rightId: string,
+  divider: HTMLElement,
+  leftPanel: HTMLElement,
+  container: HTMLElement,
   minLeft: number,
   maxLeft: number | undefined,
 ): void {
-  const divider = document.getElementById(dividerId)!
-  const leftPanel = document.getElementById(leftId)!
-  const container = document.getElementById('main-container')!
-
   let dragging = false
   let startX = 0
   let startWidth = 0

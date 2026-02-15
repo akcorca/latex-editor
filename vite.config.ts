@@ -1,10 +1,27 @@
 import { defineConfig } from 'vite'
 
+const isLibBuild = process.env.BUILD_MODE === 'lib'
+
 export default defineConfig({
   base: process.env.BASE_URL || '/',
-  build: {
-    target: 'es2022',
-  },
+  build: isLibBuild
+    ? {
+        target: 'es2022',
+        lib: {
+          entry: 'src/index.ts',
+          formats: ['es'],
+          fileName: 'latex-editor',
+        },
+        cssFileName: 'style',
+        rollupOptions: {
+          output: {
+            assetFileNames: '[name][extname]',
+          },
+        },
+      }
+    : {
+        target: 'es2022',
+      },
   server: {
     // COOP/COEP not needed — SwiftLaTeX doesn't use SharedArrayBuffer
     // Omitting avoids blocking same-origin proxied texlive requests

@@ -781,12 +781,19 @@ for comprehensive treatments.
 \\end{document}
 `
 
+export interface VirtualFSOptions {
+  /** If true, start with no files (skip default main.tex template). */
+  empty?: boolean
+}
+
 export class VirtualFS {
   private files = new Map<string, VirtualFile>()
   private listeners: Array<() => void> = []
 
-  constructor() {
-    this.writeFile('main.tex', DEFAULT_TEX)
+  constructor(options?: VirtualFSOptions) {
+    if (!options?.empty) {
+      this.writeFile('main.tex', DEFAULT_TEX)
+    }
   }
 
   writeFile(path: string, content: string | Uint8Array): void {
