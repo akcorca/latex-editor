@@ -1,5 +1,21 @@
 import type { TexError } from '../types'
 
+/** Search up to 5 lines ahead for "l.42 ..." pattern */
+function findLineNumber(lines: string[], start: number): number {
+  const end = Math.min(start + 5, lines.length)
+  for (let j = start; j < end; j++) {
+    const m = lines[j]!.match(/^l\.(\d+)\s/)
+    if (m) return parseInt(m[1]!, 10)
+  }
+  return 0
+}
+
+/** Extract line number from "at lines? N" on current or next line */
+function findBoxLineNumber(line: string, nextLine: string): number {
+  const m = line.match(/at lines? (\d+)/) ?? nextLine.match(/at lines? (\d+)/)
+  return m ? parseInt(m[1]!, 10) : 0
+}
+
 export function parseTexErrors(log: string): TexError[] {
   const errors: TexError[] = []
   const lines = log.split('\n')
@@ -10,24 +26,33 @@ export function parseTexErrors(log: string): TexError[] {
     // Match "! Error message" pattern
     const errorMatch = line.match(/^! (.+)/)
     if (errorMatch) {
-      // Look for line number in nearby lines: "l.42 ..."
-      let lineNum = 0
-      for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
-        const lineMatch = lines[j]!.match(/^l\.(\d+)\s/)
-        if (lineMatch) {
-          lineNum = parseInt(lineMatch[1]!, 10)
-          break
-        }
-      }
-      errors.push({ line: lineNum, message: errorMatch[1]!, severity: 'error' })
+      errors.push({
+        line: findLineNumber(lines, i + 1),
+        message: errorMatch[1]!,
+        severity: 'error',
+      })
+      continue
     }
 
     // Match "LaTeX Warning:" pattern
     const warnMatch = line.match(/LaTeX Warning:\s*(.+)/)
     if (warnMatch) {
-      const warnLineMatch = line.match(/on input line (\d+)/)
-      const lineNum = warnLineMatch ? parseInt(warnLineMatch[1]!, 10) : 0
-      errors.push({ line: lineNum, message: warnMatch[1]!, severity: 'warning' })
+      const m = line.match(/on input line (\d+)/)
+      errors.push({
+        line: m ? parseInt(m[1]!, 10) : 0,
+        message: warnMatch[1]!,
+        severity: 'warning',
+      })
+      continue
+    }
+
+    // Match "Overfull \hbox ..." or "Underfull \hbox ..." warnings
+    if (/^(Over|Under)full \\[hv]box .+/.test(line)) {
+      errors.push({
+        line: findBoxLineNumber(line, lines[i + 1] ?? ''),
+        message: line,
+        severity: 'warning',
+      })
     }
   }
 

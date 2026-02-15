@@ -88,4 +88,65 @@ describe('parseTexErrors', () => {
     const errors = parseTexErrors(log)
     expect(errors[0]!.line).toBe(99)
   })
+
+  it('parses overfull hbox warning with line range', () => {
+    const log = ['Overfull \\hbox (15.0pt too wide) in paragraph at lines 10--15', ' [] '].join(
+      '\n',
+    )
+
+    const errors = parseTexErrors(log)
+    expect(errors).toEqual([
+      {
+        line: 10,
+        message: 'Overfull \\hbox (15.0pt too wide) in paragraph at lines 10--15',
+        severity: 'warning',
+      },
+    ])
+  })
+
+  it('parses underfull vbox warning with line number on next line', () => {
+    const log = [
+      'Underfull \\vbox (badness 10000) has occurred while \\output is active',
+      ' [] at line 42',
+    ].join('\n')
+
+    const errors = parseTexErrors(log)
+    expect(errors).toEqual([
+      {
+        line: 42,
+        message: 'Underfull \\vbox (badness 10000) has occurred while \\output is active',
+        severity: 'warning',
+      },
+    ])
+  })
+
+  it('parses overfull hbox without line number', () => {
+    const log = 'Overfull \\hbox (3.5pt too wide) detected\n\n'
+
+    const errors = parseTexErrors(log)
+    expect(errors).toEqual([
+      {
+        line: 0,
+        message: 'Overfull \\hbox (3.5pt too wide) detected',
+        severity: 'warning',
+      },
+    ])
+  })
+
+  it('parses box warnings alongside errors', () => {
+    const log = [
+      '! Undefined control sequence.',
+      'l.5 \\badcmd',
+      '',
+      'Overfull \\hbox (10.0pt too wide) in paragraph at lines 20--25',
+      ' [] ',
+    ].join('\n')
+
+    const errors = parseTexErrors(log)
+    expect(errors).toHaveLength(2)
+    expect(errors[0]!.severity).toBe('error')
+    expect(errors[0]!.line).toBe(5)
+    expect(errors[1]!.severity).toBe('warning')
+    expect(errors[1]!.line).toBe(20)
+  })
 })
