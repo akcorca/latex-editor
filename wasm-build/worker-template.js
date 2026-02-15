@@ -433,6 +433,7 @@ function compileLaTeXRoutine() {
         if (fmtStatus === 0) {
             try {
                 self._fmtData = FS.readFile(WORKROOT + "/pdflatex.fmt", { encoding: "binary" });
+                self._fmtBuiltThisSession = true;
                 console.log("[compile] Format built: " + self._fmtData.length + " bytes");
             } catch(e) {
                 console.error("[compile] Format build succeeded but can't read output: " + e);
@@ -549,6 +550,14 @@ function compileLaTeXRoutine() {
         if (synctexData !== null) {
             response["synctex"] = synctexData.buffer;
             transferables.push(synctexData.buffer);
+        }
+
+        // Include format data when freshly built (so the host can save it)
+        if (self._fmtBuiltThisSession) {
+            var fmtCopy = new Uint8Array(self._fmtData);
+            response["format"] = fmtCopy.buffer;
+            transferables.push(fmtCopy.buffer);
+            self._fmtBuiltThisSession = false;
         }
 
         self.postMessage(response, transferables);

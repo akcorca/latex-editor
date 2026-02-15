@@ -112,6 +112,19 @@ export class SwiftLatexEngine implements TexEngine {
         const synctex = success && data.synctex ? new Uint8Array(data.synctex) : null
         const errors = parseTexErrors(log)
 
+        // When the worker builds a fresh format, save it as a download.
+        // Run with docker compose once, then commit the downloaded .fmt file.
+        if (data.format) {
+          const blob = new Blob([new Uint8Array(data.format)])
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = 'swiftlatexpdftex.fmt'
+          a.click()
+          URL.revokeObjectURL(url)
+          console.log(`[engine] Compatible format file downloaded (${blob.size} bytes)`)
+        }
+
         resolve({ success, pdf, log, errors, compileTime, synctex })
       }
 
