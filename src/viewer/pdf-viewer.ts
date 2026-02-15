@@ -150,45 +150,73 @@ export class PdfViewer {
     const oldCanvases = Array.from(this.pagesContainer.querySelectorAll('canvas'))
     this.pageRenderer.recycle(oldCanvases as HTMLCanvasElement[])
 
-    // Render into off-screen fragment
-    const fragment = document.createDocumentFragment()
-
-    for (let i = 1; i <= numPages; i++) {
-      // Bail if a newer render started
-      if (generation !== this.renderGeneration) return
-
-      const result = await this.pageRenderer.renderPage(this.pdfDoc, i, this.scale)
-
-      // Click → inverse search (synctex first, text-mapper fallback)
-      result.canvas.addEventListener('click', (e) => {
-        if (!this.onInverseSearch) return
-        const rect = result.canvas.getBoundingClientRect()
-        const x = (e.clientX - rect.left) / this.scale
-        const y = (e.clientY - rect.top) / this.scale
-
-        let loc: SourceLocation | null = null
-        if (this.synctexData) {
-          loc = this.synctexParser.inverseLookup(this.synctexData, i, x, y)
-        }
-        if (!loc) {
-          loc = this.textMapper.lookup(i, x, y)
-        }
-        if (loc) this.onInverseSearch(loc)
-      })
-
-      fragment.appendChild(result.wrapper)
-    }
-
-    // Final staleness check before DOM swap
+    // Phase 1: Render the current (visible) page first and swap immediately
+    const visiblePage = Math.min(this.currentPage, numPages)
+    if (generation !== this.renderGeneration) return
+    const firstResult = await this.pageRenderer.renderPage(this.pdfDoc, visiblePage, this.scale)
     if (generation !== this.renderGeneration) return
 
-    // Preserve scroll position, swap in one shot
+    this.attachInverseSearch(firstResult.canvas, visiblePage)
+
+    // Create placeholders for pages we haven't rendered yet
+    const wrappers = new Array<HTMLElement>(numPages)
+    for (let i = 1; i <= numPages; i++) {
+      if (i === visiblePage) {
+        wrappers[i - 1] = firstResult.wrapper
+      } else {
+        const placeholder = document.createElement('div')
+        placeholder.className = 'pdf-page-container'
+        placeholder.dataset.pageNum = String(i)
+        // Match dimensions to avoid layout shift
+        placeholder.style.width = `${firstResult.wrapper.offsetWidth}px`
+        placeholder.style.height = `${firstResult.wrapper.offsetHeight}px`
+        wrappers[i - 1] = placeholder
+      }
+    }
+
+    const fragment = document.createDocumentFragment()
+    for (const w of wrappers) fragment.appendChild(w)
+
     const scrollTop = this.pagesContainer.scrollTop
     this.pagesContainer.replaceChildren(fragment)
     this.pagesContainer.scrollTop = scrollTop
-
-    // Set up scroll-based page tracking
     this.observePages()
+
+    // Phase 2: Render remaining pages in the background
+    for (let i = 1; i <= numPages; i++) {
+      if (i === visiblePage) continue
+      if (generation !== this.renderGeneration) return
+
+      const result = await this.pageRenderer.renderPage(this.pdfDoc, i, this.scale)
+      if (generation !== this.renderGeneration) return
+
+      this.attachInverseSearch(result.canvas, i)
+      // Replace placeholder with rendered page
+      wrappers[i - 1]!.replaceWith(result.wrapper)
+      wrappers[i - 1] = result.wrapper
+    }
+
+    // Re-observe after all pages are real
+    this.observePages()
+  }
+
+  /** Attach inverse search click handler to a rendered canvas */
+  private attachInverseSearch(canvas: HTMLCanvasElement, pageNum: number): void {
+    canvas.addEventListener('click', (e) => {
+      if (!this.onInverseSearch) return
+      const rect = canvas.getBoundingClientRect()
+      const x = (e.clientX - rect.left) / this.scale
+      const y = (e.clientY - rect.top) / this.scale
+
+      let loc: SourceLocation | null = null
+      if (this.synctexData) {
+        loc = this.synctexParser.inverseLookup(this.synctexData, pageNum, x, y)
+      }
+      if (!loc) {
+        loc = this.textMapper.lookup(pageNum, x, y)
+      }
+      if (loc) this.onInverseSearch(loc)
+    })
   }
 
   /** Track which page is most visible via IntersectionObserver */
