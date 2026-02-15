@@ -25,96 +25,87 @@ Overleaf를 월등하게 이길 수 있는 논문 작성 소프트웨어. 다음
 
 ---
 
-## 2) 제안 아키텍처: “권위(TeX) + 실시간(렌더러) 분리”가 핵심
+## 2) 제안 아키텍처: "권위(TeX) + 실시간(렌더러) 분리"가 핵심
 
 ### 큰 그림
 
-1. **권위 엔진(TeX)**는 정확도를 보장한다. (WASM 우선, 서버 fallback)
-2. **실시간 뷰**는 즉시 반응한다. (GPU/WebGPU 적극 활용)
-3. **동기화(소스↔뷰)**는 SyncTeX + “더 강한 의미 트레이스”로 한다. (Tectonic 커스터마이징)
+1. **권위 엔진(TeX)**는 정확도를 보장한다. (pdfTeX WASM 우선, 서버 fallback)
+2. **실시간 뷰**는 즉시 반응한다. (canvas 최적화 → 장기 WebGPU)
+3. **동기화(소스↔뷰)**는 SyncTeX + 엔진 트레이스로 한다. (pdfTeX C 코드 수정)
 
 ### 구성요소
 
 * **Editor**: Monaco
-* **LSP**: Rust 기반(가능하면 WASM), + 엔진 트레이스 결합
-* **TTX Engine**: Tectonic 포크(대폭 커스터마이징)
-* **Two outputs**
+* **Engine**: pdfTeX 1.40.22 WASM (SwiftLaTeX 기반, SyncTeX 포함 재빌드 완료)
+* **Fallback Server**: full TeX Live (pdfTeX + XeTeX + LuaTeX) — WASM 한계 시 자동 전환
+* **Two outputs** (장기)
 
   * (1) **PDF**: 최종/권위/내보내기
-  * (2) **Page Display List (PDL)**: 실시간 프리뷰용 “페이지 장면 그래프”
+  * (2) **Page Display List (PDL)**: 실시간 프리뷰용 (pdfTeX shipout 훅)
 * **Viewer**
 
-  * **LiveView(WebGPU)**: PDL 렌더(초저지연)
-  * **PDFView(PDF.js)**: 최종 PDF 렌더(정확, 선택/검색/복사 등)
-  * 두 뷰는 “스왑/오버레이” 방식으로 연결
-* **Fallback Server (WebSocket)**: 패키지 미지원/문서 과대/저사양 기기에서 자동 전환
+  * **PDFView(PDF.js)**: 현재 기본 뷰어 (canvas pool, 가시 페이지 우선 렌더)
+  * **LiveView(WebGPU)**: PDL 렌더 (장기 목표)
 * **Package System**: whitelist + lockfile + CDN lazy fetch + 해시 검증
 
 ---
 
-## 3) “Tectonic 대폭 커스터마이징”의 핵심 4가지
+## 3) 엔진 결정: pdfTeX WASM (Tectonic 불채택)
 
-### (1) **Interruptible compilation + time-slicing**
+### 결정 경위
 
-WASM에서 “한 번 컴파일 시작하면 끝날 때까지”는 UX에 치명적입니다.
+I0에서 Tectonic(Rust, XeTeX 기반)과 SwiftLaTeX pdfTeX WASM을 비교 평가했다.
 
-* 엔진 내부에 **안전한 yield point**를 박습니다:
+| 기준 | Tectonic | pdfTeX WASM |
+|------|----------|-------------|
+| WASM 빌드 가능성 | ~30% (ICU4C/harfbuzz/freetype 의존) | ✅ 검증 완료 |
+| 바이너리 크기 | 예상 10-20MB+ (ICU 데이터 포함) | 1.6MB |
+| 빌드 파이프라인 | 미검증 | ✅ 2-phase 빌드 확립 (I3) |
+| C 코드 수정 능력 | Rust (깔끔하지만 미경험) | WEB-to-C (읽기 어렵지만 I3에서 검증) |
+| Unicode/OpenType | ✅ 네이티브 (XeTeX 기반) | ❌ 8-bit 엔진 (inputenc/fontenc로 대부분 커버) |
+| 학술 논문 호환성 | 높음 | 높음 (90%+ 논문은 pdfTeX로 충분) |
 
-  * page shipout 직후
-  * paragraph 종료 지점
-  * (가능하면) 일부 macro expansion 단계
-* JS/worker가 **타임 버짓(예: 10–20ms)** 단위로 실행하고 yield
-* 입력이 오면 즉시 cancel 가능(협조적 취소)
+**결론: pdfTeX WASM 유지.** Tectonic의 유일한 실질적 장점(Unicode/OpenType)은 서버 fallback(full TeX Live)으로 커버한다.
 
-효과: “UI는 항상 부드럽고”, 컴파일은 뒤에서 계속 진행됩니다.
+### pdfTeX WASM을 선택한 이유
 
-### (2) **Preamble VM Snapshot (진짜 성능 레버)**
+1. **검증된 파이프라인**: I3에서 pdfTeX C 코드 수정(SyncTeX 28개 심볼 rename) + Emscripten 재빌드에 성공. 같은 방식으로 엔진 레벨 최적화(preamble snapshot, yield point, PDL 출력)를 적용할 수 있다.
+2. **작은 바이너리**: 1.6MB WASM. Tectonic은 ICU4C 데이터만으로 수 MB. 초기 로드 성능에 직접 영향.
+3. **빌드 성공 확률**: Tectonic WASM 빌드는 63% C 의존성(ICU4C, harfbuzz, freetype)으로 실패 위험이 높다. 8-12주 투자 후 실패하면 전액 손실.
+4. **이원 전략**: WASM(pdfTeX, 빠르고 가벼움)으로 90%+ 커버, 서버(full TeX Live: pdfTeX + XeTeX + LuaTeX)로 100% 커버. Tectonic 하나로 통일할 필요 없음.
+5. **Tectonic의 Rust 장점은 코드 품질이지 사용자 가치가 아님**: 코드가 깔끔해지는 건 좋지만, 마이그레이션 비용을 정당화할 만큼의 사용자 체감 차이가 없다.
 
-기존의 단순 “preamble caching”보다 한 단계 더 가야 합니다.
+### pdfTeX WASM 커스터마이징 로드맵
 
-* preamble 처리 후의 TeX VM 상태를 **스냅샷**으로 저장
+이하 4가지는 모두 pdfTeX C 코드 수정 + Emscripten 재빌드로 구현 가능. I3의 빌드 파이프라인(`wasm-build/`)을 그대로 활용한다.
 
-  * 실무적으로는 “format dump” 또는 **WASM linear memory snapshot(페이지 단위 CoW)**가 유력
-* 이후 body 편집은 스냅샷에서 시작 → preamble 재처리 제거
+#### (1) Preamble snapshot (성능 레버)
 
-효과: 논문에서 반복되는 편집의 80%는 preamble 변화가 아닙니다. 여기서 압도적 이득.
+* Emscripten `Module.HEAP`를 `ArrayBuffer.slice()`로 통째로 저장
+* preamble 처리 후 스냅샷 → body 편집 시 복원 후 재개
+* 대안: `\dump` primitive로 custom format 생성 (기존 `swiftlatexpdftex.fmt`도 이 방식)
+* 효과: 반복 편집의 80%는 preamble 변화 없음 → 컴파일 시간 절반 이하
 
-### (3) **PDL(Page Display List) 출력 드라이버 추가**
+#### (2) Interruptible compilation
 
-“매번 PDF 만들기”가 느린 이유:
+* `emscripten_sleep()`을 shipout / paragraph 종료 지점에 삽입
+* Emscripten Asyncify 플래그로 빌드 (yield → resume 가능)
+* Worker가 타임 버짓(10-20ms) 단위로 실행, 입력 시 협조적 취소
+* 효과: 대형 문서에서도 UI 블로킹 없음
 
-* PDF 생성 비용도 있고,
-* PDF.js의 파싱/폰트 준비/렌더 준비도 큽니다.
+#### (3) PDL(Page Display List) 출력
 
-해결:
+* `ship_out()` 함수에 훅 추가 → glyph position + font info를 binary로 worker에 전달
+* PDF 생성과 병행 (별도 출력 채널)
+* 장기적으로 WebGPU 렌더러의 입력 데이터로 사용
+* 효과: PDF.js 파싱/렌더 단계를 우회하여 즉시 화면 반영
 
-* TeX가 shipout할 때 페이지 내용을 **PDL(장면 그래프)**로도 내보냅니다.
+#### (4) Semantic Trace
 
-  * glyph runs(폰트, glyph id, 위치)
-  * vector paths
-  * images
-  * 링크/앵커
-  * 그리고 **소스 span**(파일, 라인, 컬럼, 토큰 범위)
-
-이건 사실상 “TeX → 실시간 렌더용 IR”을 만드는 것이고, 여기서 제품의 모트가 생깁니다.
-
-### (4) **Semantic Trace (LSP를 정적분석에만 의존하지 않게)**
-
-LaTeX는 정적 분석이 원리적으로 한계가 있습니다. 대신:
-
-* 엔진이 실제로 확장/실행하면서
-
-  * label 정의
-  * ref 사용
-  * cite 키 사용
-  * section 구조
-  * include 그래프
-  * 패키지 로딩
-  * 에러/경고
-    를 **구조화 이벤트(JSON/CBOR)**로 스트리밍
-
-즉, LSP의 “진실”은 정적 파서가 아니라 **엔진 실행 트레이스**가 됩니다.
-(이게 Overleaf+일반 에디터 조합과의 질적 차이를 만들 수 있습니다.)
+* 매크로 확장 시점에 구조화 이벤트 emit (label, ref, cite, section, include)
+* C 레벨 훅 또는 TeX 매크로 레벨 모두 가능
+* LSP의 "진실"을 정적 파서가 아닌 엔진 실행 트레이스로 구성
+* 효과: Overleaf+일반 에디터 조합을 넘어서는 정확한 자동완성/진단
 
 ---
 
@@ -135,7 +126,7 @@ LaTeX는 정적 분석이 원리적으로 한계가 있습니다. 대신:
 Knuth–Plass line breaking 같은 DP는 GPU로도 가능하지만, 구현/디버깅 대비 이득이 불확실합니다.
 현실적 우선순위는:
 
-1. **WASM SIMD + 멀티스레드(SharedArrayBuffer)**로 폰트/레이아웃/로그 처리 최적화
+1. **WASM SIMD + 멀티스레드(SharedArrayBuffer)**로 폰트/레이아웃/로그 처리 최적화 (pdfTeX WASM에 적용)
 2. GPU는 **그린 픽셀(렌더)**에 집중
 
 ---
@@ -686,174 +677,150 @@ I3 기능 완성 후 품질 개선. 커밋 `83f3a2c`, `b4c1a08`.
 
 ---
 
-## Iteration 4 (6주) — WebSocket 서버 fallback (신뢰성 확장)
+## Iteration 4 (4주) — 서버 fallback + 프로젝트 관리
 
-**사용자 가치:** “내 논문이 어떤 패키지/문서 크기여도 일단 된다”
+**사용자 가치:** "어떤 패키지/문서 크기여도 일단 된다" + 폴더 구조로 실제 프로젝트 관리 가능
 
-* 자동 fallback 조건:
+### A. 서버 컴파일 fallback
 
-  * 패키지 미지원
-  * WASM 메모리 초과 위험
-  * 타임버짓 초과
-* WebSocket 컴파일 서비스:
+WASM에서 실패하거나 지원하지 않는 패키지/엔진이 필요할 때 서버로 자동 전환.
 
-  * 컴파일 로그 스트리밍
-  * PDF + SyncTeX 반환
-* 동일 UI/동일 기능 유지(사용자는 로컬/서버를 의식하지 않음)
+* 자동 fallback 조건: 패키지 미지원, WASM 메모리 초과, 타임버짓 초과
+* Phase 1: REST API (POST source → PDF + SyncTeX + log). WebSocket 스트리밍은 이후.
+* 서버 엔진: full TeX Live (pdfTeX + XeTeX + LuaTeX) — WASM이 못 하는 것을 커버
+* 동일 UI/동일 기능 유지 (사용자는 로컬/서버를 의식하지 않음)
 
-**KPI:** 실패율 급감, 대형 문서 지원
+### B. 프로젝트 관리
 
----
+현재: 단일 프로젝트, 플랫 파일 목록.
 
-## Iteration 5 (6주) — Profile + tex.lock + 템플릿/재현성
+* 폴더 구조 지원 (VirtualFS 확장)
+* 다중 프로젝트 (IndexedDB에 프로젝트별 네임스페이스)
+* 이미지/바이너리 파일 업로드 (drag & drop → engine writeFile)
 
-**사용자 가치:** “학회 템플릿 선택만 하면 바로 시작 / 결과가 항상 같음”
-
-* Profile 시스템(학회/저널 템플릿 번들)
-* `tex.lock` 도입(버전 고정)
-* whitelist 확장 운영툴(내부):
-
-  * 패키지 의존성 그래프
-  * 성능/안전 등급
-  * 브라우저/서버 지원 매트릭스
-
-**KPI:** 템플릿 온보딩 1분 이내, 재현성 이슈 감소
+**KPI:** 실패율 급감, 이미지 포함 문서 컴파일 가능
 
 ---
 
-## Iteration 6 (8주) — “preamble VM snapshot”로 컴파일 시간 절반 이하
+## Iteration 5 (4주) — BibTeX + 템플릿 + 패키지 확장
 
-**사용자 가치:** Overleaf 대비 체감 속도 우위 시작(특히 반복 편집)
+**사용자 가치:** "학회 템플릿 골라서 바로 시작, 참고문헌도 관리"
 
-* Tectonic 커스터마이징:
+**여기서 공개 베타 가능**
 
-  * preamble 처리 후 VM 스냅샷 생성/복구
-  * 캐시 키: preamble hash + profile + lockfile
-* 폰트/하이픈 패턴/패키지 로딩 캐시 강화
-* idle time에 “예열 컴파일”(speculative warm-up)
+* BibTeX/Biber 지원: WASM bibtex 또는 서버 fallback
+* 템플릿 갤러리: 학회/저널별 사전 구성된 프로젝트 번들
+* 패키지 whitelist 확장 + 의존성 그래프 도구 (내부)
 
-**KPI:** 일반 논문(10–20p)에서 2–5x 개선 목표
-
----
-
-## Iteration 7 (8주) — Semantic Trace 기반 “강한 LSP”
-
-**사용자 가치:** LaTeX가 IDE처럼 변함(자동완성/정확한 진단/리팩터)
-
-* 엔진에서 semantic trace 스트리밍:
-
-  * labels/refs/cites/sections/includes
-* LSP 기능:
-
-  * cite/label 자동완성(실제 문서 기반)
-  * go-to-definition / find references
-  * label rename(안전한 범위)
-  * 구조 기반 outline, 문서 그래프
-
-**KPI:** “정적 파서 한계”를 넘어서는 정확도(사용자가 바로 느낌)
+**KPI:** 템플릿 온보딩 1분 이내, BibTeX 참고문헌 동작
 
 ---
 
-## Iteration 8 (10주) — PDL + LiveView(WebGPU): 진짜 ‘즉시 반응’
+## Iteration 6 (6주) — 사용자 계정 + 클라우드 저장
 
-**사용자 가치:** 타이핑하면 50ms 내 페이지가 움직인다(게임 체인저)
+**사용자 가치:** "기기를 바꿔도 내 프로젝트가 살아있다"
 
-* Tectonic에 PDL 출력 드라이버 추가
+* 사용자 인증 (OAuth / 이메일)
+* 서버 측 프로젝트 저장 (S3 / DB)
+* IndexedDB ↔ 클라우드 동기화 (오프라인 우선, 온라인 시 sync)
+* 프로젝트 공유 링크 (읽기 전용)
 
-  * 최소: glyph runs + 이미지 + 간단한 path
-  * 소스 span 포함
-* WebGPU 렌더러:
-
-  * glyph atlas, 타일링, 뷰포트 렌더
-  * 스크롤/줌 60fps 유지
-* “LiveView 즉시 반응” + 백그라운드 PDF 수렴
-
-  * 사용자는 항상 LiveView를 보고,
-  * PDFView는 준비되면 스왑(또는 오버레이)
-
-**KPI:** Keystroke→화면 변화 30–80ms 달성
+**KPI:** 로그인 후 프로젝트 복원 < 3초, 기기간 동기화 동작
 
 ---
 
-## Iteration 9 (8주) — 대형 문서 대응: 체크포인트/부분 수렴
+## Iteration 7 (8주) — 실시간 협업
 
-**사용자 가치:** 100페이지급에서도 ‘현재 작업 중인 부분’은 계속 빠름
+**사용자 가치:** "링크 공유하면 같이 편집, Overleaf처럼"
 
-* 엔진 체크포인트(연구 베팅):
+* CRDT 기반 실시간 공동 편집 (문서 + 파일 트리)
+* WebSocket 기반 상태 동기화
+* 커서 공유, 사용자 색상 표시
+* 권한 관리 (소유자/편집자/뷰어)
+* 서버 컴파일을 공유 세션에서 활용 (I4 인프라 재사용)
 
-  * section/paragraph 경계에서 상태 스냅샷(가볍게)
-  * 편집 위치 근처부터 재개 시도, 실패 시 전체 fallback
-* 또는 “include 단위 컴파일” 자동 지원(현실적 강수):
-
-  * 프로젝트 구조(\include/\input) 분석
-  * 현재 챕터만 즉시 컴파일, 전체는 백그라운드
-
-**KPI:** 대형 문서에서 “현재 페이지” 업데이트 지연 상한을 낮춤
+**KPI:** 2인 이상 동시 편집 시 충돌 없음, 지연 < 200ms
 
 ---
 
-## Iteration 10 (8주) — PDF.js 커스터마이징: 뷰어를 ‘제품급’으로
+## Iteration 8 (6주) — Preamble snapshot + 컴파일 성능
 
-**사용자 가치:** 뷰어가 빠르고 고급 기능(검색/복사/주석/리뷰)이 쾌적
+**사용자 가치:** "편집할 때마다 기다리는 시간이 절반으로 줄었다"
 
-* PDF.js 페이지 캐시/타일링/프리페치 강화
-* (선택) WebGPU 백엔드 착수:
+pdfTeX WASM C 코드 수정 + Emscripten 재빌드 (I3 빌드 파이프라인 활용).
 
-  * CanvasGraphics의 렌더 백엔드 분리
-  * 텍스트/벡터 가속
-* LiveView ↔ PDFView 전환 UX 최적화
+* Emscripten WASM linear memory snapshot: preamble 처리 후 `Module.HEAP` 저장 → body 편집 시 복원
+* 캐시 키: preamble hash + package list
+* idle time에 예열 컴파일 (speculative warm-up)
+* 폰트/하이픈 패턴 로딩 캐시 강화
 
-  * 선택/검색은 PDFView 레이어에서
-  * 즉시 반응은 LiveView에서
-
-**KPI:** 스크롤/줌 부드러움, CPU 사용량 감소
+**KPI:** 일반 논문(10-20p) 반복 편집 시 컴파일 시간 2-5x 개선
 
 ---
 
-## Iteration 11 (8주) — 협업/공유(Startup 성장 레버)
+## Iteration 9 (8주) — Semantic Trace + LSP
 
-**사용자 가치:** 링크 공유/코멘트/공동작업이 Overleaf급 이상
+**사용자 가치:** "LaTeX가 IDE처럼 — 자동완성, 정확한 진단, go-to-definition"
 
-* CRDT 기반 실시간 협업(문서/파일 트리)
-* WebSocket 기반:
+pdfTeX C 코드에 semantic trace 훅 추가 (매크로 확장 시점에 이벤트 emit).
 
-  * 공동 편집 상태 동기화
-  * 서버 컴파일 스트리밍(팀 단위)
-* 권한/버전/리뷰 코멘트
+* 엔진 트레이스: labels/refs/cites/sections/includes를 구조화 이벤트로 스트리밍
+* LSP 기능: cite/label 자동완성, go-to-definition, find references, 구조 outline
+* 정적 파서가 아닌 엔진 실행 트레이스 기반 → LaTeX 특유의 매크로 확장도 정확하게 추적
 
-**KPI:** 팀 사용성 확보(유료 전환 포인트)
+**KPI:** 자동완성 정확도 > 95%, go-to-definition 동작
 
 ---
 
-## Iteration 12 (8주) — 안정화/호환성/확장성(모트 고정)
+## Iteration 10 (10주) — PDL + LiveView: 즉시 반응
 
-**사용자 가치:** “이제 업무/연구에 써도 된다”
+**사용자 가치:** "타이핑하면 50ms 내 페이지가 움직인다"
 
+pdfTeX `ship_out()`에 PDL 출력 드라이버 추가. WebGPU로 PDL 렌더.
+
+* PDL: glyph runs (font, glyph id, position) + images + vector paths + 소스 span
+* WebGPU 렌더러: glyph atlas, 타일링, 뷰포트 렌더, 스크롤/줌 60fps
+* "LiveView 즉시 반응" + 백그라운드 PDF 수렴 → 스왑/오버레이
+* Interruptible compilation: `emscripten_sleep()` yield points (Asyncify)
+
+**KPI:** Keystroke→화면 변화 30-80ms 달성
+
+---
+
+## Iteration 11 (8주) — 대형 문서 + 안정화
+
+**사용자 가치:** "100페이지 논문도 쾌적, 이제 업무에 써도 된다"
+
+* `\include` 단위 부분 컴파일: 현재 챕터만 즉시 컴파일, 전체는 백그라운드
+* 또는 section 경계 체크포인트 (Preamble snapshot 확장)
+* PDF.js 캐시/타일링/프리페치 강화
 * arXiv급 코퍼스 회귀 테스트 파이프라인
-* 패키지 whitelist 대폭 확대(등급제 유지)
-* 관측/텔레메트리(컴파일 병목 자동 수집)
-* 보안(서버 sandbox), 비용 최적화(캐시/빌드팜)
+* `tex.lock` 도입 (패키지 버전 고정 + 재현성)
+* 보안 (서버 sandbox), 관측/텔레메트리
 
-**KPI:** 실패율/크래시율 목표 달성, 장기 운영 가능
+**KPI:** 대형 문서 "현재 페이지" 업데이트 < 500ms, 실패율/크래시율 목표 달성
 
 ---
 
-# 8) 이 설계가 “틀 안에 갇히지 않는” 이유 (차별점)
+# 8) 이 설계가 "틀 안에 갇히지 않는" 이유 (차별점)
 
-1. **PDF를 최종 산출물로 유지하면서도**, 편집 중에는 **PDL+WebGPU로 ‘즉시 반응’**을 만든다.
+1. **PDF를 최종 산출물로 유지하면서도**, 편집 중에는 **PDL+WebGPU로 '즉시 반응'**을 만든다.
 2. LSP의 정확도를 정적 분석에 맡기지 않고, **엔진 semantic trace로 끌어올린다.**
-3. VM snapshot/interruptible compilation처럼, **Tectonic을 제품 요구에 맞게 엔진 레벨로 변형**한다.
-4. WebSocket fallback을 단순 백업이 아니라 **스트리밍/협업/빌드팜으로 확장 가능한 코어**로 설계한다.
-5. whitelist를 “기술 제한”이 아니라 **프로파일/락파일/재현성**으로 제품화한다.
+3. VM snapshot/interruptible compilation처럼, **pdfTeX WASM을 제품 요구에 맞게 엔진 레벨로 변형**한다. (I3에서 검증된 빌드 파이프라인 활용)
+4. **이원 엔진 전략**: WASM(pdfTeX, 빠르고 가벼움)으로 90%+ 커버, 서버(full TeX Live)로 100% 커버. 사용자는 차이를 의식하지 않음.
+5. WebSocket fallback을 단순 백업이 아니라 **협업/빌드팜으로 확장 가능한 코어**로 설계한다.
+6. whitelist를 "기술 제한"이 아니라 **프로파일/락파일/재현성**으로 제품화한다.
 
 ---
 
-# 9) 바로 다음 액션(팀이 당장 시작할 일)
+# 9) 다음 단계 (I4 착수 전 준비)
 
-“뛰어난 개발팀” 기준으로도 성공/실패를 가르는 건 초반 6주 리스크 제거입니다. 다음 3개 PoC를 **동시에** 돌리는 걸 권합니다.
+I3b 완료 기준:
+- pdfTeX WASM + SyncTeX 양방향 검색 동작
+- 렌더 파이프라인 리팩터링 + 체감 성능 개선 완료
+- 84 단위 테스트 + 19 E2E 테스트 통과
 
-1. **WASM 성능 PoC**: 10p/30p/100p에서 컴파일 시간/메모리/취소 지연 측정
-2. **PDL PoC**: shipout hook으로 “glyph 위치 + 소스 span”을 최소 형태로 뽑아 WebGPU로 한 페이지 렌더
-3. **Preamble snapshot PoC**: preamble 처리 후 상태를 재사용해 body-only 재컴파일 가능한지 확인
-
-이 3개가 성공하면, 위 Iteration 플랜은 단순 계획이 아니라 “실행 가능한 로드맵”이 됩니다.
+I4 착수 전 확인 사항:
+1. **서버 API 설계**: REST vs WebSocket, 엔드포인트 구조, 인증
+2. **프로젝트 구조 설계**: VirtualFS 폴더 확장, IndexedDB 스키마
+3. **이미지 업로드 UX**: drag & drop → VirtualFS → engine writeFile 파이프라인
