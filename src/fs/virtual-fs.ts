@@ -1,6 +1,6 @@
 import type { VirtualFile } from '../types'
 
-const DEFAULT_TEX = `\\documentclass[9pt,twocolumn]{extarticle}
+const DEFAULT_TEX = `\\documentclass[10pt,twocolumn]{article}
 \\usepackage{amsmath}
 \\usepackage{amssymb}
 \\usepackage{amsthm}
