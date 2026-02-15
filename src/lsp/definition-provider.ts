@@ -1,0 +1,127 @@
+import * as monaco from 'monaco-editor'
+import type { ProjectIndex } from './project-index'
+
+type Token = { command: string; arg: string } | { command: string }
+
+/** Walk backwards from col to find the index of the opening `{` at depth 0 */
+function findOpenBrace(line: string, col: number): number {
+  let depth = 0
+  for (let i = col - 1; i >= 0; i--) {
+    if (line[i] === '}') depth++
+    else if (line[i] === '{') {
+      if (depth === 0) return i
+      depth--
+    }
+  }
+  return -1
+}
+
+/** Find the index of the closing `}` that matches the `{` at braceStart */
+function findCloseBrace(line: string, braceStart: number): number {
+  let depth = 0
+  for (let i = braceStart; i < line.length; i++) {
+    if (line[i] === '{') depth++
+    else if (line[i] === '}') {
+      depth--
+      if (depth === 0) return i
+    }
+  }
+  return braceStart
+}
+
+/** Try to find a \cmd{arg} token where the cursor is inside the braces */
+function getTokenInBraces(line: string, col: number): { command: string; arg: string } | null {
+  const braceStart = findOpenBrace(line, col)
+  if (braceStart < 0) return null
+
+  const before = line.slice(0, braceStart)
+  const cmdMatch = before.match(/\\(\w+)(?:\[.*?\])?\s*$/)
+  if (!cmdMatch) return null
+
+  const braceEnd = findCloseBrace(line, braceStart)
+  return { command: cmdMatch[1]!, arg: line.slice(braceStart + 1, braceEnd) }
+}
+
+/** Try to find a \command token where the cursor is on the command word */
+function getTokenOnCommand(line: string, col: number): { command: string } | null {
+  const wordMatch = line.slice(0, col + 20).match(/\\(\w+)/)
+  if (!wordMatch || wordMatch.index === undefined) return null
+  const start = wordMatch.index
+  const end = start + wordMatch[0].length
+  if (col >= start && col <= end) {
+    return { command: wordMatch[1]! }
+  }
+  return null
+}
+
+/** Extract the token at the cursor position: returns { command, arg } or null */
+function getTokenAtPosition(
+  model: monaco.editor.ITextModel,
+  position: monaco.Position,
+): Token | null {
+  const line = model.getLineContent(position.lineNumber)
+  const col = position.column - 1
+  return getTokenInBraces(line, col) ?? getTokenOnCommand(line, col)
+}
+
+function locationToDefinition(loc: {
+  file: string
+  line: number
+  column: number
+}): monaco.languages.Definition {
+  return {
+    uri: monaco.Uri.file(loc.file),
+    range: new monaco.Range(loc.line, loc.column, loc.line, loc.column),
+  }
+}
+
+function handleArgToken(
+  command: string,
+  arg: string,
+  index: ProjectIndex,
+): monaco.languages.Definition | null {
+  // \ref{name} or \eqref{name} -> jump to \label{name}
+  if (/^(?:ref|eqref|pageref|autoref|cref|Cref|nameref)$/.test(command)) {
+    const label = index.findLabelDef(arg)
+    if (label) return locationToDefinition(label.location)
+    return null
+  }
+
+  // \input{file} or \include{file} -> jump to file line 1
+  if (/^(?:input|include|subfile)$/.test(command)) {
+    let filePath = arg
+    if (!filePath.includes('.')) filePath += '.tex'
+    return {
+      uri: monaco.Uri.file(filePath),
+      range: new monaco.Range(1, 1, 1, 1),
+    }
+  }
+
+  return null
+}
+
+function handleCommandToken(
+  command: string,
+  index: ProjectIndex,
+): monaco.languages.Definition | null {
+  const cmdDef = index.findCommandDef(command)
+  if (cmdDef) return locationToDefinition(cmdDef.location)
+  return null
+}
+
+export function createDefinitionProvider(index: ProjectIndex): monaco.languages.DefinitionProvider {
+  return {
+    provideDefinition(
+      model: monaco.editor.ITextModel,
+      position: monaco.Position,
+    ): monaco.languages.Definition | null {
+      const token = getTokenAtPosition(model, position)
+      if (!token) return null
+
+      if ('arg' in token) {
+        return handleArgToken(token.command, token.arg, index)
+      }
+      return handleCommandToken(token.command, index)
+    },
+  }
+}

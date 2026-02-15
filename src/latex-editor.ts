@@ -3,6 +3,8 @@ import { createEditor, revealLine, setEditorContent } from './editor/setup'
 import { CompileScheduler } from './engine/compile-scheduler'
 import { SwiftLatexEngine } from './engine/swiftlatex-engine'
 import { VirtualFS } from './fs/virtual-fs'
+import { ProjectIndex } from './lsp/project-index'
+import { registerLatexProviders } from './lsp/register-providers'
 import { initPerfOverlay, perf } from './perf/metrics'
 import { SynctexParser } from './synctex/synctex-parser'
 import type { AppStatus, CompileResult, LatexEditorEventMap, LatexEditorOptions } from './types'
@@ -32,6 +34,8 @@ export class LatexEditor {
   private fileTree!: FileTree
   private scheduler!: CompileScheduler
   private editor!: Monaco.editor.IStandaloneCodeEditor
+  private projectIndex = new ProjectIndex()
+  private lspDisposables: { dispose(): void }[] = []
 
   // --- State ---
   private currentFile: string
@@ -103,13 +107,17 @@ export class LatexEditor {
   // --- File management ---
 
   loadProject(files: Record<string, string | Uint8Array>): void {
-    // Clear existing files
+    // Clear existing files and index
     for (const path of this.fs.listFiles()) {
       this.fs.deleteFile(path)
+      this.projectIndex.removeFile(path)
     }
     // Load new files
     for (const [path, content] of Object.entries(files)) {
       this.fs.writeFile(path, content)
+      if (typeof content === 'string') {
+        this.projectIndex.updateFile(path, content)
+      }
     }
     // Switch editor to main file
     this.currentFile = this.mainFile
@@ -121,6 +129,7 @@ export class LatexEditor {
         this.editor,
         content,
         this.currentFile.endsWith('.tex') ? 'latex' : 'plaintext',
+        this.currentFile,
       )
       this.reattachEditorChangeHandler()
     }
@@ -209,6 +218,8 @@ export class LatexEditor {
     if (this.disposed) return
     this.disposed = true
     this.scheduler.cancel()
+    for (const d of this.lspDisposables) d.dispose()
+    this.lspDisposables = []
     this.editorChangeDisposable?.dispose()
     this.editor?.dispose()
     this.engine.terminate()
@@ -317,6 +328,17 @@ export class LatexEditor {
     downloadBtn.onclick = () => this.downloadPdf()
     this.root.querySelector<HTMLElement>('.le-toolbar')!.appendChild(downloadBtn)
 
+    // Register LSP providers
+    this.lspDisposables = registerLatexProviders(this.projectIndex, this.fs)
+
+    // Index initial files
+    for (const path of this.fs.listFiles()) {
+      const file = this.fs.getFile(path)
+      if (file && typeof file.content === 'string') {
+        this.projectIndex.updateFile(path, file.content)
+      }
+    }
+
     // Layout dividers
     setupDividers(this.root)
 
@@ -367,14 +389,17 @@ export class LatexEditor {
     perf.mark('total')
     perf.mark('debounce')
     this.fs.writeFile(this.currentFile, content)
+    this.projectIndex.updateFile(this.currentFile, content)
     this.emit('filechange', { path: this.currentFile, content })
     this.syncAndCompile()
   }
 
   private onFileSelect(path: string): void {
-    // Save current editor content
+    // Save current editor content and update index
     if (this.editor) {
-      this.fs.writeFile(this.currentFile, this.editor.getValue())
+      const value = this.editor.getValue()
+      this.fs.writeFile(this.currentFile, value)
+      this.projectIndex.updateFile(this.currentFile, value)
     }
 
     this.currentFile = path
@@ -382,7 +407,7 @@ export class LatexEditor {
     if (file && this.editor) {
       const content =
         typeof file.content === 'string' ? file.content : new TextDecoder().decode(file.content)
-      setEditorContent(this.editor, content, path.endsWith('.tex') ? 'latex' : 'plaintext')
+      setEditorContent(this.editor, content, path.endsWith('.tex') ? 'latex' : 'plaintext', path)
       this.reattachEditorChangeHandler()
     }
     this.fileTree.setActive(path)
@@ -423,6 +448,7 @@ export class LatexEditor {
 
     this.errorLog.update(result.errors)
     setErrorMarkers(this.editor, result.errors)
+    this.updateAuxIndex()
     this.maybeRecompile(result)
     this.emit('compile', { result })
   }
@@ -460,6 +486,21 @@ export class LatexEditor {
     } else {
       this.pendingRecompile = false
     }
+  }
+
+  private updateAuxIndex(): void {
+    // Read .aux file from engine after compilation
+    const mainBase = this.mainFile.replace(/\.tex$/, '')
+    this.engine
+      .readFile(`${mainBase}.aux`)
+      .then((auxContent) => {
+        if (auxContent) {
+          this.projectIndex.updateAux(auxContent)
+        }
+      })
+      .catch(() => {
+        // .aux file may not exist on first compile or after errors
+      })
   }
 
   private downloadPdf(): void {

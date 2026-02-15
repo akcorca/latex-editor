@@ -59,11 +59,20 @@ export function setEditorContent(
   editor: monaco.editor.IStandaloneCodeEditor,
   content: string,
   language = 'latex',
+  filePath?: string,
 ): void {
   const oldModel = editor.getModel()
-  const newModel = monaco.editor.createModel(content, language)
-  editor.setModel(newModel)
-  if (oldModel) {
+  const uri = filePath ? monaco.Uri.file(filePath) : undefined
+  // Reuse existing model for this URI if it exists, otherwise create new
+  const existing = uri ? monaco.editor.getModel(uri) : null
+  if (existing) {
+    existing.setValue(content)
+    editor.setModel(existing)
+  } else {
+    const newModel = monaco.editor.createModel(content, language, uri)
+    editor.setModel(newModel)
+  }
+  if (oldModel && oldModel !== editor.getModel()) {
     oldModel.dispose()
   }
 }
