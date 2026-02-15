@@ -100,6 +100,15 @@ function restoreHeapMemory() {
     }
     var dst = new Uint8Array(wasmMemory.buffer);
     dst.set(self.initmem);
+    // Zero out any memory beyond the initial snapshot.
+    // memory.grow() during compilation expands the heap but restoreHeapMemory
+    // only copies back the initial region — the grown pages retain stale data
+    // from the previous compilation (TeX hash entries, macro definitions, input
+    // stack frames). This causes "Command already defined" / "Can be used only
+    // in preamble" / "text input levels exceeded" on subsequent compiles.
+    if (dst.length > self.initmem.length) {
+        dst.fill(0, self.initmem.length);
+    }
 }
 
 // --- Virtual filesystem helpers ----------------------------------------------

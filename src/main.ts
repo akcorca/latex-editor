@@ -155,6 +155,8 @@ function onEditorChange(content: string): void {
 }
 
 // --- File selection handler ---
+let editorChangeDisposable: { dispose(): void } | null = null
+
 function onFileSelect(path: string): void {
   // Save current editor content
   if (editor) {
@@ -168,8 +170,11 @@ function onFileSelect(path: string): void {
       typeof file.content === 'string' ? file.content : new TextDecoder().decode(file.content)
     setEditorContent(editor, content, path.endsWith('.tex') ? 'latex' : 'plaintext')
 
-    // Re-attach change handler since setEditorContent creates a new model
-    editor.onDidChangeModelContent(() => {
+    // Re-attach change handler since setEditorContent creates a new model.
+    // Dispose the previous handler to avoid stacking — each file switch would
+    // otherwise add another handler, firing N+1 times per keystroke after N switches.
+    if (editorChangeDisposable) editorChangeDisposable.dispose()
+    editorChangeDisposable = editor.onDidChangeModelContent(() => {
       onEditorChange(editor.getValue())
     })
   }
