@@ -7,6 +7,7 @@ import { initPerfOverlay, perf } from './perf/metrics'
 import { SynctexParser } from './synctex/synctex-parser'
 import type { AppStatus, CompileResult } from './types'
 import { ErrorLog } from './ui/error-log'
+import { setErrorMarkers } from './ui/error-markers'
 import { FileTree } from './ui/file-tree'
 import { setupDividers } from './ui/layout'
 import { PdfViewer } from './viewer/pdf-viewer'
@@ -101,6 +102,7 @@ function onCompileResult(result: CompileResult): void {
   }
 
   errorLog.update(result.errors, result.log)
+  setErrorMarkers(editor, result.errors)
 }
 
 // --- Compile Scheduler ---
@@ -175,6 +177,41 @@ editor.onDidChangeCursorPosition(() => {
     pdfViewer.forwardSearch(currentFile, line)
   }, 100)
 })
+
+// --- Ctrl+S: flush debounce and compile immediately ---
+editor.addAction({
+  id: 'latex.save-compile',
+  label: 'Save & Compile',
+  keybindings: [
+    // Monaco uses its own key constants; import dynamically to avoid pulling in all of monaco
+    2048 /* CtrlCmd */ | 49 /* KeyS */,
+  ],
+  run: () => {
+    syncAndCompile()
+    scheduler.flush()
+  },
+})
+
+// --- PDF Download ---
+function downloadPdf(): void {
+  const data = pdfViewer.getLastPdf()
+  if (!data) return
+  const blob = new Blob([data.buffer as ArrayBuffer], { type: 'application/pdf' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'output.pdf'
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+const downloadBtn = document.createElement('button')
+downloadBtn.textContent = 'PDF'
+downloadBtn.title = 'Download PDF'
+downloadBtn.style.cssText =
+  'margin-left:auto;background:#404040;border:none;color:#ccc;padding:2px 8px;cursor:pointer;border-radius:3px;font-size:12px;'
+downloadBtn.onclick = downloadPdf
+document.getElementById('toolbar')!.appendChild(downloadBtn)
 
 // --- Layout ---
 setupDividers()
