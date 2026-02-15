@@ -371,7 +371,9 @@ export class LatexEditor {
       error: 'Error',
       rendering: 'Rendering PDF...',
     }
-    this.statusEl.textContent = detail ? `${labels[status]} ${detail}` : labels[status]
+    const label = detail ? `${labels[status]} ${detail}` : labels[status]
+    this.statusEl.textContent = label
+    this.pdfViewer.setLoadingStatus(label)
     this.emit('status', { status })
   }
 

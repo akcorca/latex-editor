@@ -216,6 +216,38 @@ body {
   color: #f44747;
 }
 
+/* PDF viewer loading overlay */
+.pdf-loading-overlay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  width: 100%;
+  flex: 1;
+}
+
+.pdf-loading-text {
+  font-size: 13px;
+  color: #888;
+}
+
+.pdf-loading-bar {
+  width: 160px;
+  height: 3px;
+  background: #444;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.pdf-loading-bar-fill {
+  width: 10%;
+  height: 100%;
+  background: #007acc;
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
 /* PDF viewer */
 .pdf-page-container {
   margin-bottom: 8px;

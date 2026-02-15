@@ -26,8 +26,11 @@ export class PdfViewer {
   private pageRenderer = new PageRenderer()
   private lastPdf: Uint8Array | null = null
 
+  private loadingOverlay: HTMLElement | null = null
+
   constructor(container: HTMLElement) {
     this.container = container
+    this.buildLoadingOverlay()
     this.buildControls()
   }
 
@@ -54,6 +57,39 @@ export class PdfViewer {
   private controlsEl!: HTMLElement
   private pageInfo!: HTMLSpanElement
   private pagesContainer!: HTMLElement
+
+  private buildLoadingOverlay(): void {
+    const overlay = document.createElement('div')
+    overlay.className = 'pdf-loading-overlay'
+    overlay.innerHTML =
+      '<div class="pdf-loading-text">Loading engine...</div>' +
+      '<div class="pdf-loading-bar"><div class="pdf-loading-bar-fill"></div></div>'
+    this.container.appendChild(overlay)
+    this.loadingOverlay = overlay
+  }
+
+  /** Update the loading overlay status. Hides overlay on first render. */
+  setLoadingStatus(status: string): void {
+    if (!this.loadingOverlay) return
+    const text = this.loadingOverlay.querySelector('.pdf-loading-text')
+    if (text) text.textContent = status
+    const fill = this.loadingOverlay.querySelector<HTMLElement>('.pdf-loading-bar-fill')
+    if (fill) {
+      const widths: Record<string, string> = {
+        'Loading engine...': '20%',
+        'Compiling...': '50%',
+        'Rendering PDF...': '80%',
+      }
+      fill.style.width = widths[status] ?? fill.style.width
+    }
+  }
+
+  private removeLoadingOverlay(): void {
+    if (this.loadingOverlay) {
+      this.loadingOverlay.remove()
+      this.loadingOverlay = null
+    }
+  }
 
   private buildControls(): void {
     this.controlsEl = document.createElement('div')
@@ -114,6 +150,7 @@ export class PdfViewer {
       return performance.now() - start
     }
 
+    this.removeLoadingOverlay()
     this.controlsEl.style.display = 'flex'
 
     // Clamp current page
