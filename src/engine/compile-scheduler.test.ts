@@ -237,6 +237,30 @@ describe('CompileScheduler', () => {
     expect(scheduler.getDebounceMs()).toBe(150)
   })
 
+  it('flush immediately fires pending debounce', async () => {
+    const engine = mockEngine()
+    const onResult = vi.fn()
+    const onStatus = vi.fn()
+    const scheduler = sched(engine, onResult, onStatus, { minDebounceMs: 5000 })
+
+    scheduler.schedule()
+    expect(engine.compile).not.toHaveBeenCalled()
+
+    scheduler.flush()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(engine.compile).toHaveBeenCalledTimes(1)
+    expect(onResult).toHaveBeenCalledTimes(1)
+  })
+
+  it('flush does nothing if no pending debounce', () => {
+    const engine = mockEngine()
+    const scheduler = sched(engine, vi.fn(), vi.fn())
+
+    scheduler.flush()
+    expect(engine.compile).not.toHaveBeenCalled()
+  })
+
   it('clamps debounce to max', async () => {
     const engine = mockEngine(makeResult({ compileTime: 5000 }))
     const scheduler = sched(engine, vi.fn(), vi.fn(), {
