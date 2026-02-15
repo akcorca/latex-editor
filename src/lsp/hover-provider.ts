@@ -1,5 +1,6 @@
 import * as monaco from 'monaco-editor'
 import { getCommandByName, getEnvironmentByName } from './latex-commands'
+import { CITE_CMDS, findMatchAtCol, REF_CMDS } from './latex-patterns'
 import type { ProjectIndex } from './project-index'
 
 type Hover = monaco.languages.Hover
@@ -78,14 +79,6 @@ function hoverCommand(m: RegExpMatchArray, lineNum: number, index: ProjectIndex)
   return null
 }
 
-/** Find the first regex match in line that contains the given column */
-function findMatchAtCol(line: string, re: RegExp, col: number): RegExpMatchArray | null {
-  for (const m of line.matchAll(re)) {
-    if (col >= m.index && col < m.index + m[0].length) return m
-  }
-  return null
-}
-
 export function createHoverProvider(index: ProjectIndex): monaco.languages.HoverProvider {
   return {
     provideHover(
@@ -101,14 +94,14 @@ export function createHoverProvider(index: ProjectIndex): monaco.languages.Hover
 
       const refMatch = findMatchAtCol(
         line,
-        /\\(?:ref|eqref|pageref|autoref|cref|Cref|nameref)\{([^}]+)\}/g,
+        new RegExp(`\\\\(?:${REF_CMDS})\\{([^}]+)\\}`, 'g'),
         col,
       )
       if (refMatch) return hoverRef(refMatch, lineNum, index)
 
       const citeMatch = findMatchAtCol(
         line,
-        /\\(?:cite|citep|citet|parencite|textcite|autocite)\{([^}]+)\}/g,
+        new RegExp(`\\\\(?:${CITE_CMDS})\\{([^}]+)\\}`, 'g'),
         col,
       )
       if (citeMatch) return hoverCite(citeMatch, lineNum, index)

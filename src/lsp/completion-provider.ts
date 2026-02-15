@@ -1,6 +1,7 @@
 import * as monaco from 'monaco-editor'
 import type { VirtualFS } from '../fs/virtual-fs'
 import { COMMON_PACKAGES, LATEX_COMMANDS, LATEX_ENVIRONMENTS } from './latex-commands'
+import { CITE_CMDS, INPUT_CMDS, REF_CMDS, USEPACKAGE_CMDS } from './latex-patterns'
 import type { ProjectIndex } from './project-index'
 
 const CompletionItemKind = monaco.languages.CompletionItemKind
@@ -21,13 +22,11 @@ function getContext(
   const textBefore = lineContent.slice(0, position.column - 1)
 
   // \ref{..., \eqref{..., etc.
-  const refMatch = textBefore.match(/\\(?:ref|eqref|pageref|autoref|cref|Cref|nameref)\{([^}]*)$/)
+  const refMatch = textBefore.match(new RegExp(`\\\\(?:${REF_CMDS})\\{([^}]*)$`))
   if (refMatch) return { type: 'ref', prefix: refMatch[1]! }
 
   // \cite{... (also after commas inside cite)
-  const citeMatch = textBefore.match(
-    /\\(?:cite|citep|citet|parencite|textcite|autocite|nocite)(?:\[.*?\])?\{([^}]*)$/,
-  )
+  const citeMatch = textBefore.match(new RegExp(`\\\\(?:${CITE_CMDS})(?:\\[.*?\\])?\\{([^}]*)$`))
   if (citeMatch) {
     const inner = citeMatch[1]!
     const lastComma = inner.lastIndexOf(',')
@@ -43,11 +42,13 @@ function getContext(
   if (endMatch) return { type: 'end', prefix: endMatch[1]! }
 
   // \usepackage{... or \usepackage[...]{...
-  const pkgMatch = textBefore.match(/\\(?:usepackage|RequirePackage)(?:\[.*?\])?\{([^}]*)$/)
+  const pkgMatch = textBefore.match(
+    new RegExp(`\\\\(?:${USEPACKAGE_CMDS})(?:\\[.*?\\])?\\{([^}]*)$`),
+  )
   if (pkgMatch) return { type: 'usepackage', prefix: pkgMatch[1]! }
 
   // \input{... or \include{...
-  const includeMatch = textBefore.match(/\\(?:input|include|subfile)\{([^}]*)$/)
+  const includeMatch = textBefore.match(new RegExp(`\\\\(?:${INPUT_CMDS})\\{([^}]*)$`))
   if (includeMatch) return { type: 'include', prefix: includeMatch[1]! }
 
   // \command (backslash followed by word chars)

@@ -1,33 +1,19 @@
-import * as monaco from 'monaco-editor'
+import type * as monaco from 'monaco-editor'
+import { findMatchAtCol, NEWCMD_CMDS, REF_CMDS, sourceLocationToMonaco } from './latex-patterns'
 import type { ProjectIndex } from './project-index'
 
 type Location = monaco.languages.Location
 
-function toLocation(loc: { file: string; line: number; column: number }): Location {
-  return {
-    uri: monaco.Uri.file(loc.file),
-    range: new monaco.Range(loc.line, loc.column, loc.line, loc.column),
-  }
-}
-
-/** Find a regex match that spans the given column */
-function findMatchAtCol(line: string, re: RegExp, col: number): RegExpMatchArray | null {
-  for (const m of line.matchAll(re)) {
-    if (col >= m.index && col < m.index + m[0].length) return m
-  }
-  return null
-}
-
 function refsForLabel(name: string, index: ProjectIndex): Location[] {
-  return index.getAllLabelRefs(name).map((ref) => toLocation(ref.location))
+  return index.getAllLabelRefs(name).map((ref) => sourceLocationToMonaco(ref.location))
 }
 
 function refsForRefCommand(name: string, index: ProjectIndex): Location[] {
   const locations: Location[] = []
   const def = index.findLabelDef(name)
-  if (def) locations.push(toLocation(def.location))
+  if (def) locations.push(sourceLocationToMonaco(def.location))
   for (const ref of index.getAllLabelRefs(name)) {
-    locations.push(toLocation(ref.location))
+    locations.push(sourceLocationToMonaco(ref.location))
   }
   return locations
 }
@@ -48,7 +34,7 @@ export function createReferenceProvider(index: ProjectIndex): monaco.languages.R
       // Check if cursor is on \newcommand{\name} or \renewcommand{\name}
       const cmdDefMatch = findMatchAtCol(
         line,
-        /\\(?:newcommand|renewcommand|providecommand)\*?\{\\(\w+)\}/g,
+        new RegExp(`\\\\(?:${NEWCMD_CMDS})\\*?\\{\\\\(\\w+)\\}`, 'g'),
         col,
       )
       if (cmdDefMatch) return []
@@ -56,7 +42,7 @@ export function createReferenceProvider(index: ProjectIndex): monaco.languages.R
       // Check \ref{name} -> find definition + all other refs
       const refMatch = findMatchAtCol(
         line,
-        /\\(?:ref|eqref|pageref|autoref|cref|Cref|nameref)\{([^}]+)\}/g,
+        new RegExp(`\\\\(?:${REF_CMDS})\\{([^}]+)\\}`, 'g'),
         col,
       )
       if (refMatch) return refsForRefCommand(refMatch[1]!, index)

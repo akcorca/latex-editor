@@ -1,4 +1,5 @@
 import * as monaco from 'monaco-editor'
+import { INPUT_CMDS, REF_CMDS, sourceLocationToMonaco } from './latex-patterns'
 import type { ProjectIndex } from './project-index'
 
 type Token = { command: string; arg: string } | { command: string }
@@ -42,6 +43,8 @@ function getTokenInBraces(line: string, col: number): { command: string; arg: st
   return { command: cmdMatch[1]!, arg: line.slice(braceStart + 1, braceEnd) }
 }
 
+const ARG_CMD_RE = new RegExp(`^(?:${REF_CMDS}|cite|citep|citet|parencite|textcite|${INPUT_CMDS})$`)
+
 /** Try to find a \command token where the cursor is on the command word */
 function getTokenOnCommand(line: string, col: number): Token | null {
   const wordMatch = line.slice(0, col + 20).match(/\\(\w+)/)
@@ -52,11 +55,7 @@ function getTokenOnCommand(line: string, col: number): Token | null {
 
   const command = wordMatch[1]!
   // For ref/cite/input commands, also grab the brace argument that follows
-  if (
-    /^(?:ref|eqref|pageref|autoref|cref|Cref|nameref|cite|citep|citet|parencite|textcite|input|include|subfile)$/.test(
-      command,
-    )
-  ) {
+  if (ARG_CMD_RE.test(command)) {
     const after = line.slice(end)
     const braceMatch = after.match(/^(?:\[.*?\])?\{([^}]*)\}/)
     if (braceMatch) return { command, arg: braceMatch[1]! }
@@ -74,16 +73,8 @@ function getTokenAtPosition(
   return getTokenInBraces(line, col) ?? getTokenOnCommand(line, col)
 }
 
-function locationToDefinition(loc: {
-  file: string
-  line: number
-  column: number
-}): monaco.languages.Definition {
-  return {
-    uri: monaco.Uri.file(loc.file),
-    range: new monaco.Range(loc.line, loc.column, loc.line, loc.column),
-  }
-}
+const REF_CMD_RE = new RegExp(`^(?:${REF_CMDS})$`)
+const INPUT_CMD_RE = new RegExp(`^(?:${INPUT_CMDS})$`)
 
 function handleArgToken(
   command: string,
@@ -91,14 +82,14 @@ function handleArgToken(
   index: ProjectIndex,
 ): monaco.languages.Definition | null {
   // \ref{name} or \eqref{name} -> jump to \label{name}
-  if (/^(?:ref|eqref|pageref|autoref|cref|Cref|nameref)$/.test(command)) {
+  if (REF_CMD_RE.test(command)) {
     const label = index.findLabelDef(arg)
-    if (label) return locationToDefinition(label.location)
+    if (label) return sourceLocationToMonaco(label.location)
     return null
   }
 
   // \input{file} or \include{file} -> jump to file line 1
-  if (/^(?:input|include|subfile)$/.test(command)) {
+  if (INPUT_CMD_RE.test(command)) {
     let filePath = arg
     if (!filePath.includes('.')) filePath += '.tex'
     return {
@@ -115,7 +106,7 @@ function handleCommandToken(
   index: ProjectIndex,
 ): monaco.languages.Definition | null {
   const cmdDef = index.findCommandDef(command)
-  if (cmdDef) return locationToDefinition(cmdDef.location)
+  if (cmdDef) return sourceLocationToMonaco(cmdDef.location)
   return null
 }
 

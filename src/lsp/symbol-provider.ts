@@ -1,17 +1,7 @@
 import * as monaco from 'monaco-editor'
 import type { ProjectIndex } from './project-index'
-import type { SectionLevel } from './types'
 
 const SymbolKind = monaco.languages.SymbolKind
-
-const SECTION_DEPTH: Record<SectionLevel, number> = {
-  part: 0,
-  chapter: 1,
-  section: 2,
-  subsection: 3,
-  subsubsection: 4,
-  paragraph: 5,
-}
 
 export function createDocumentSymbolProvider(
   index: ProjectIndex,
@@ -81,31 +71,7 @@ export function createDocumentSymbolProvider(
       // Sort by line number
       result.sort((a, b) => a.range.startLineNumber - b.range.startLineNumber)
 
-      // Build section hierarchy
-      return nestSections(
-        result,
-        symbols.sections.map((s) => ({
-          level: SECTION_DEPTH[s.level],
-          line: s.location.line,
-        })),
-      )
+      return result
     },
   }
-}
-
-interface SectionInfo {
-  level: number
-  line: number
-}
-
-/** Nest symbols under section headers based on depth */
-function nestSections(
-  flat: monaco.languages.DocumentSymbol[],
-  sections: SectionInfo[],
-): monaco.languages.DocumentSymbol[] {
-  if (sections.length === 0) return flat
-
-  // Simple approach: return flat list. Nesting is complex and
-  // the flat list with section detail already shows hierarchy via Ctrl+Shift+O.
-  return flat
 }

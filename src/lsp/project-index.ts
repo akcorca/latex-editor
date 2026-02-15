@@ -6,7 +6,6 @@ import type {
   CitationRef,
   CommandDef,
   FileSymbols,
-  IncludeDef,
   LabelDef,
   LabelRef,
   SectionDef,
@@ -36,37 +35,19 @@ export class ProjectIndex {
   // --- Queries ---
 
   getAllLabels(): LabelDef[] {
-    const result: LabelDef[] = []
-    for (const symbols of this.files.values()) {
-      result.push(...symbols.labels)
-    }
-    return result
+    return [...this.files.values()].flatMap((s) => s.labels)
   }
 
   getAllLabelRefs(name: string): LabelRef[] {
-    const result: LabelRef[] = []
-    for (const symbols of this.files.values()) {
-      for (const ref of symbols.labelRefs) {
-        if (ref.name === name) result.push(ref)
-      }
-    }
-    return result
+    return [...this.files.values()].flatMap((s) => s.labelRefs.filter((r) => r.name === name))
   }
 
   getAllCitations(): CitationRef[] {
-    const result: CitationRef[] = []
-    for (const symbols of this.files.values()) {
-      result.push(...symbols.citations)
-    }
-    return result
+    return [...this.files.values()].flatMap((s) => s.citations)
   }
 
   getAllSections(): SectionDef[] {
-    const result: SectionDef[] = []
-    for (const symbols of this.files.values()) {
-      result.push(...symbols.sections)
-    }
-    return result
+    return [...this.files.values()].flatMap((s) => s.sections)
   }
 
   getFileSymbols(filePath: string): FileSymbols | undefined {
@@ -74,19 +55,7 @@ export class ProjectIndex {
   }
 
   getCommandDefs(): CommandDef[] {
-    const result: CommandDef[] = []
-    for (const symbols of this.files.values()) {
-      result.push(...symbols.commands)
-    }
-    return result
-  }
-
-  getIncludes(): IncludeDef[] {
-    const result: IncludeDef[] = []
-    for (const symbols of this.files.values()) {
-      result.push(...symbols.includes)
-    }
-    return result
+    return [...this.files.values()].flatMap((s) => s.commands)
   }
 
   getAllEnvironments(): string[] {
@@ -133,12 +102,5 @@ export class ProjectIndex {
       }
     }
     return undefined
-  }
-
-  /** Find all usages of a command name across all files */
-  findCommandUsages(_name: string): { file: string; line: number; column: number }[] {
-    // This would require scanning raw content for \name occurrences.
-    // For now, return empty - reference provider will do its own regex scan.
-    return []
   }
 }

@@ -1,3 +1,11 @@
+import {
+  CITE_CMDS,
+  INPUT_CMDS,
+  NEWCMD_CMDS,
+  REF_CMDS,
+  SECTION_CMDS,
+  USEPACKAGE_CMDS,
+} from './latex-patterns'
 import type { CommandDef, FileSymbols, SectionLevel, SourceLocation } from './types'
 
 /** Strip comments: remove everything after unescaped % */
@@ -25,15 +33,15 @@ function extractBraceContent(text: string, startIndex: number): string | null {
 }
 
 const LABEL_RE = /\\label\{/g
-const REF_RE = /\\(?:ref|eqref|pageref|autoref|cref|Cref|nameref)\{/g
-const CITE_RE = /\\(?:cite|citep|citet|parencite|textcite|autocite|nocite)(?:\[.*?\])?\{/g
-const SECTION_RE = /\\(part|chapter|section|subsection|subsubsection|paragraph)\*?\{/g
-const NEWCOMMAND_RE = /\\(?:newcommand|renewcommand|providecommand)\*?\{\\(\w+)\}(?:\[(\d+)\])?/g
+const REF_RE = new RegExp(`\\\\(?:${REF_CMDS})\\{`, 'g')
+const CITE_RE = new RegExp(`\\\\(?:${CITE_CMDS})(?:\\[.*?\\])?\\{`, 'g')
+const SECTION_RE = new RegExp(`\\\\(${SECTION_CMDS})\\*?\\{`, 'g')
+const NEWCOMMAND_RE = new RegExp(`\\\\(?:${NEWCMD_CMDS})\\*?\\{\\\\(\\w+)\\}(?:\\[(\\d+)\\])?`, 'g')
 const DEF_RE = /\\def\\(\w+)/g
 const DECLARE_MATH_RE = /\\DeclareMathOperator\*?\{\\(\w+)\}/g
 const BEGIN_RE = /\\begin\{/g
-const INPUT_RE = /\\(input|include|subfile)\{/g
-const USEPACKAGE_RE = /\\(?:usepackage|RequirePackage)(?:\[(.*?)\])?\{/g
+const INPUT_RE = new RegExp(`\\\\(${INPUT_CMDS})\\{`, 'g')
+const USEPACKAGE_RE = new RegExp(`\\\\(?:${USEPACKAGE_CMDS})(?:\\[(.*?)\\])?\\{`, 'g')
 
 function loc(file: string, line: number, column: number): SourceLocation {
   return { file, line, column }
