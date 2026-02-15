@@ -289,8 +289,11 @@ export class LatexEditor {
     // Editor
     const editorContainer = this.root.querySelector<HTMLElement>('.le-editor')!
     const initialContent = (this.fs.readFile(this.currentFile) as string) ?? ''
-    this.editor = createEditor(editorContainer, initialContent, (content) =>
-      this.onEditorChange(content),
+    this.editor = createEditor(
+      editorContainer,
+      initialContent,
+      (content) => this.onEditorChange(content),
+      this.currentFile,
     )
 
     // File Tree

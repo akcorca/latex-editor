@@ -43,15 +43,25 @@ function getTokenInBraces(line: string, col: number): { command: string; arg: st
 }
 
 /** Try to find a \command token where the cursor is on the command word */
-function getTokenOnCommand(line: string, col: number): { command: string } | null {
+function getTokenOnCommand(line: string, col: number): Token | null {
   const wordMatch = line.slice(0, col + 20).match(/\\(\w+)/)
   if (!wordMatch || wordMatch.index === undefined) return null
   const start = wordMatch.index
   const end = start + wordMatch[0].length
-  if (col >= start && col <= end) {
-    return { command: wordMatch[1]! }
+  if (col < start || col > end) return null
+
+  const command = wordMatch[1]!
+  // For ref/cite/input commands, also grab the brace argument that follows
+  if (
+    /^(?:ref|eqref|pageref|autoref|cref|Cref|nameref|cite|citep|citet|parencite|textcite|input|include|subfile)$/.test(
+      command,
+    )
+  ) {
+    const after = line.slice(end)
+    const braceMatch = after.match(/^(?:\[.*?\])?\{([^}]*)\}/)
+    if (braceMatch) return { command, arg: braceMatch[1]! }
   }
-  return null
+  return { command }
 }
 
 /** Extract the token at the cursor position: returns { command, arg } or null */

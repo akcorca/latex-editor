@@ -32,11 +32,13 @@ export function createEditor(
   container: HTMLElement,
   initialContent: string,
   onChange: (content: string) => void,
+  filePath?: string,
 ): monaco.editor.IStandaloneCodeEditor {
   ensureMonacoConfigured()
+  const uri = filePath ? monaco.Uri.file(filePath) : undefined
+  const model = monaco.editor.createModel(initialContent, 'latex', uri)
   const editor = monaco.editor.create(container, {
-    value: initialContent,
-    language: 'latex',
+    model,
     theme: 'vs-dark',
     fontSize: 14,
     lineNumbers: 'on',
