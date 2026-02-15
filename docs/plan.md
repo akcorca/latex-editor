@@ -853,12 +853,63 @@ texlive 서버 없이 순수 정적 파일만으로 컴파일하려면 여러 �
 
 ---
 
+## Iteration 4 — Preamble Snapshot (`\dump` 기반 포맷 캐싱) ✅
+
+**사용자 가치:** body 편집 시 컴파일 ~40% 빠름 (preamble 재처리 생략)
+
+**접근법:** C 코드 변경 없이, TeX의 `\dump` primitive로 preamble 상태를 format 파일로 캐싱.
+`\begin{document}` 앞의 preamble을 `-ini` 모드로 빌드 → `.fmt` 파일 생성.
+이후 body 편집 시 cached format을 로드하여 preamble 처리를 완전 건너뜀.
+
+### 핵심 구현
+
+- [x] **Worker**: `extractPreamble()`, `simpleHash()`, `buildPreambleFormat()` — preamble 분석 + format 빌드
+- [x] **Worker**: HIT/MISS 로직 — hash 비교로 preamble 변경 감지, 자동 fallback
+- [x] **Worker**: SyncTeX 라인 보존 — body 파일에 `%` 주석줄 패딩
+- [x] **Worker**: `main.tex` 복원 — preamble 컴파일 후 원본 복원 (recompile 안전성)
+- [x] **Host**: `CompileResult.preambleSnapshot` 플래그, 상태바 "(cached preamble)" 표시
+- [x] **Tests**: preamble-utils 단위 테스트 10개, E2E 테스트 3개
+- [x] **CI**: `iter4-*` 브랜치 트리거, WASM smoke test
+
+### 벤치마크
+
+| 항목 | 시간 |
+|------|------|
+| Preamble format 빌드 (MISS, 1회) | 198ms |
+| Body 컴파일 (HIT, cold) | 441ms |
+| Body 컴파일 (HIT, warm) | 258–302ms |
+| 추정 full 컴파일 (preamble 없이) | ~460ms |
+| **체감 개선** | **~40% 빠름** |
+
+### 제약 사항
+
+- Preamble format은 **첫 컴파일 시에만** 빌드 가능 (`_main()` → `_compileLaTeX()` 후 Emscripten JS 상태 비호환)
+- 세션 중 preamble 변경 시 format 재빌드 불가 → full compile fallback (기능 손실 없음)
+- 해결하려면: 별도 Web Worker로 format 빌드 분리, 또는 Emscripten JS 상태 리셋 방법 탐색
+
+### 결과 파일
+
+| 파일 | 작업 |
+|------|------|
+| `wasm-build/worker-template.js` | 핵심: helpers + preamble 로직 (~150줄) |
+| `public/swiftlatex/swiftlatexpdftex.js` | worker-template.js와 동기화 |
+| `src/engine/preamble-utils.ts` | 신규: 테스트 가능한 preamble 분석 |
+| `src/engine/preamble-utils.test.ts` | 신규: 단위 테스트 10개 |
+| `e2e/preamble-snapshot.spec.ts` | 신규: E2E 테스트 3개 |
+| `src/types.ts` | `preambleSnapshot` 필드 추가 |
+| `src/engine/swiftlatex-engine.ts` | 응답에서 `preambleSnapshot` 추출 |
+| `src/main.ts` | 상태 표시 |
+| `.github/workflows/ci.yml` | `iter4-*` 브랜치 트리거 |
+| `.github/workflows/wasm-build.yml` | smoke test 추가 |
+
+---
+
 # 9) 다음 단계
 
-I3c 완료 기준:
-- gh-pages 정적 배포 동작 (서버 불필요)
-- 84 단위 테스트 + 19 E2E 테스트 통과
-- CI green (lint + typecheck + test + build + deploy)
+I4 완료 기준:
+- Preamble snapshot 동작: MISS → format 빌드, HIT → 캐시 사용
+- 94 단위 테스트 통과
+- body 편집 시 ~40% 컴파일 시간 단축
 
 ## 제안: 다음 작업 우선순위
 
@@ -866,7 +917,7 @@ I3c 완료 기준:
 
 현재 정적 자산이 17MB로 초기 로드가 무겁다. 실질적 사용자 체감 개선:
 
-1. **texlive 번들 압축**: 13MB → gzip/brotli로 ~3-4MB (Vite build가 자동 처리하지만, 폰트 바이너리는 추가 최적화 가능)
+1. **texlive 번들 압축**: 13MB → gzip/brotli로 ~3-4MB
 2. **불필요 파일 제거**: 277개 중 hyphenation 패턴(~200개)은 영어만 남기면 대폭 축소
 3. **.fmt gzip 서빙**: 2.3MB → ~800KB
 4. **lazy loading**: 폰트 파일(.pfb, .tfm)은 첫 컴파일 시 on-demand fetch
@@ -880,10 +931,10 @@ I3c 완료 기준:
 3. NPM 패키지 빌드 (Vite library mode)
 4. 최소 사용 예시 (`examples/embed.html`)
 
-### Option C: I4 착수 — Preamble snapshot (4-6주)
+### Option C: Preamble 재빌드 개선
 
-컴파일 성능의 근본적 개선. I3 빌드 파이프라인 활용:
+I4 제약 해소 — 세션 중 preamble 변경 시에도 format 재빌드:
 
-1. **Emscripten Asyncify 조사**: `emscripten_sleep()` 삽입 가능 여부, 바이너리 크기 영향 측정
-2. **WASM memory snapshot PoC**: `Module.HEAP` 저장/복원 → preamble 스킵 프로토타입
-3. **preamble 경계 감지**: `\begin{document}` 시점에 snapshot 트리거하는 C 코드 훅 설계
+1. **별도 Worker**: format 빌드 전용 Web Worker (main worker와 독립)
+2. **Emscripten 상태 리셋**: `_compileLaTeX()` 후 JS 런타임 상태 복구 방법 탐색
+3. **incremental format**: preamble diff 기반 부분 재빌드

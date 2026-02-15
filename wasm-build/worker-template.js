@@ -549,21 +549,23 @@ function compileLaTeXRoutine() {
         var hash = simpleHash(split.preamble);
         if (hash === self._preambleHash && self._preambleFmtData) {
             // Preamble cache HIT — reuse cached preamble format
-            console.log("[preamble] HIT");
             usedPreamble = true;
         } else if (self._mainCallSafe) {
             // Preamble cache MISS — build new preamble format.
             // Only safe before the first _compileLaTeX() call. After that,
             // _main() corrupts Emscripten JS-side state that _compileLaTeX() needs.
-            console.log("[preamble] MISS");
+            var fmtBuildStart = performance.now();
             var fmt = buildPreambleFormat(split.preamble);
+            var fmtBuildMs = Math.round(performance.now() - fmtBuildStart);
             if (fmt) {
+                console.log("[preamble] MISS — format built in " + fmtBuildMs + "ms");
                 self._preambleFmtData = fmt;
                 self._preambleHash = hash;
                 usedPreamble = true;
                 prepareExecutionContext();
                 try { FS.writeFile(WORKROOT + "/pdflatex", ""); } catch(e) {}
             } else {
+                console.log("[preamble] MISS — format build failed (" + fmtBuildMs + "ms)");
                 prepareExecutionContext();
                 try { FS.writeFile(WORKROOT + "/pdflatex", ""); } catch(e) {}
             }
@@ -597,6 +599,7 @@ function compileLaTeXRoutine() {
     setMainFunction(self.mainfile);
 
     // Compile — always use _compileLaTeX() for stability (never _main for compilation)
+    var compileStart = performance.now();
     var status;
     try {
         status = _compileLaTeX();
@@ -607,6 +610,7 @@ function compileLaTeXRoutine() {
             throw e;
         }
     }
+    var compileMs = Math.round(performance.now() - compileStart);
     // After the first _compileLaTeX(), _main() can no longer be called safely.
     // _compileLaTeX() leaves JS-side Emscripten state that breaks _main().
     self._mainCallSafe = false;
@@ -658,7 +662,7 @@ function compileLaTeXRoutine() {
         }
     }
 
-    if (usedPreamble) console.log("[preamble] compiled with cached format");
+    console.log("[compile] " + compileMs + "ms" + (usedPreamble ? " (preamble HIT)" : ""));
 
     if (status === 0) {
         var pdfArrayBuffer = null;
