@@ -58,14 +58,6 @@ const errorLog = new ErrorLog(errorLogContainer, (line) => {
 
 // --- Compile result handler ---
 function onCompileResult(result: CompileResult): void {
-  console.log(
-    `Compile: ${result.success ? 'OK' : 'FAIL'} in ${result.compileTime.toFixed(0)}ms, ` +
-      `${result.errors.length} error(s)`,
-  )
-  if (!result.success) {
-    console.log('TeX log:', result.log)
-  }
-
   if (result.success && result.pdf) {
     // Update source content for text-mapper fallback
     for (const path of fs.listFiles()) {
@@ -81,22 +73,6 @@ function onCompileResult(result: CompileResult): void {
         .parse(result.synctex)
         .then((synctexData) => {
           pdfViewer.setSynctexData(synctexData)
-          console.log(
-            `SyncTeX: ${synctexData.inputs.size} inputs, ` +
-              `${synctexData.pages.size} pages, ` +
-              `mag=${synctexData.magnification}, unit=${synctexData.unit}, ` +
-              `xOff=${synctexData.xOffset}, yOff=${synctexData.yOffset}`,
-          )
-          // Log sample nodes from page 1 for debugging
-          const p1 = synctexData.pages.get(1)
-          if (p1 && p1.length > 0) {
-            const sample = p1.slice(0, 5)
-            for (const n of sample) {
-              console.log(
-                `  [${n.type}] line=${n.line} h=${n.h.toFixed(1)} v=${n.v.toFixed(1)} w=${n.width.toFixed(1)} h=${n.height.toFixed(1)}`,
-              )
-            }
-          }
         })
         .catch((err) => {
           console.warn('SyncTeX parse failed, using text-mapper fallback:', err)
@@ -107,8 +83,7 @@ function onCompileResult(result: CompileResult): void {
     }
 
     setStatus('rendering')
-    pdfViewer.render(result.pdf).then((renderTime) => {
-      console.log(`PDF render: ${renderTime.toFixed(0)}ms`)
+    pdfViewer.render(result.pdf).then(() => {
       setStatus('ready')
     })
   } else {
@@ -204,9 +179,7 @@ async function init(): Promise<void> {
   setStatus('loading')
 
   try {
-    const engineStart = performance.now()
     await engine.init()
-    console.log(`Engine load: ${(performance.now() - engineStart).toFixed(0)}ms`)
 
     setStatus('ready')
 

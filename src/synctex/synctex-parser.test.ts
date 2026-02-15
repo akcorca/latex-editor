@@ -154,6 +154,54 @@ Postamble:
 Count:6
 `
 
+/**
+ * Fixture simulating equation environment: vbox wraps hboxes with vertical
+ * padding between them. Clicks in padding area should still find nearest hbox.
+ */
+const FIXTURE_EQUATION = `SyncTeX Version:1
+Input:1:./main.tex
+Output:main.pdf
+Magnification:1000
+Unit:1
+X Offset:0
+Y Offset:0
+Content:
+{1
+[1,1:0,0:34611850,49825690,0
+[1,8:4736286,4000000:25137278,3000000,500000
+(1,9:4736286,2500000:25137278,655360,0
+h1,9:4736286,2500000:10000000,655360,0
+)
+(1,10:4736286,4000000:25137278,655360,0
+h1,10:4736286,4000000:10000000,655360,0
+)
+]
+]
+}1
+Postamble:
+Count:6
+`
+
+/**
+ * Fixture with WASM-style paths (/work/./)
+ */
+const FIXTURE_WASM_PATHS = `SyncTeX Version:1
+Input:1:/work/./main.tex
+Input:2:/work/./includes/chapter.tex
+Output:main.pdf
+Magnification:1000
+Unit:1
+X Offset:0
+Y Offset:0
+Content:
+{1
+(1,3:4736286,3670016:25137278,655360,0
+)
+}1
+Postamble:
+Count:1
+`
+
 // Conversion factor for default settings (unit=1, mag=1000)
 // pdf_pt = sp * 1 * 1000/1000 / 65536 * 72/72.27
 const SP_TO_PDF = (1 / 65536) * (72 / 72.27)
@@ -183,6 +231,12 @@ describe('SynctexParser', () => {
       const data = parser.parseText(FIXTURE_BASIC)
       // "./main.tex" should become "main.tex"
       expect(data.inputs.get(1)).toBe('main.tex')
+    })
+
+    it('strips /work/./ prefix from WASM paths', () => {
+      const data = parser.parseText(FIXTURE_WASM_PATHS)
+      expect(data.inputs.get(1)).toBe('main.tex')
+      expect(data.inputs.get(2)).toBe('includes/chapter.tex')
     })
 
     it('parses nodes on page 1', () => {
@@ -314,6 +368,22 @@ Count:0
       expect(result).not.toBeNull()
       expect(result!.file).toBe('chapter.tex')
       expect(result!.line).toBe(10)
+    })
+
+    it('falls back to nearest hbox when click is in equation padding', () => {
+      const data = parser.parseText(FIXTURE_EQUATION)
+
+      // Click between two hboxes (in the vbox padding area)
+      // hbox1 at v=2500000sp, hbox2 at v=4000000sp
+      // Click at v=3250000sp (midpoint between them)
+      const h = 4736286 * SP_TO_PDF + 50
+      const midV = 3250000 * SP_TO_PDF
+
+      const result = parser.inverseLookup(data, 1, h, midV)
+      expect(result).not.toBeNull()
+      // Should find nearest hbox, not fall through to page-level fallback
+      expect(result!.line).toBeGreaterThanOrEqual(9)
+      expect(result!.line).toBeLessThanOrEqual(10)
     })
 
     it('falls back to nearest node when click is outside all boxes', () => {

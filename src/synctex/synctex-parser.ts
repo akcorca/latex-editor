@@ -155,6 +155,16 @@ function parseCoords(s: string): [number, number, number, number, number] {
 
 type NodeType = SynctexNode['type']
 
+/** Is this node a box type (container or void)? */
+function isBox(node: SynctexNode): boolean {
+  return (
+    node.type === 'hbox' ||
+    node.type === 'vbox' ||
+    node.type === 'void_hbox' ||
+    node.type === 'void_vbox'
+  )
+}
+
 /** Node type prefix → type name mapping */
 const NODE_PREFIXES: Record<string, NodeType> = {
   '[': 'vbox',
@@ -165,16 +175,6 @@ const NODE_PREFIXES: Record<string, NodeType> = {
   k: 'kern',
   g: 'glue',
   $: 'math',
-}
-
-/** Is this node a box type (container or void)? */
-function isBox(node: SynctexNode): boolean {
-  return (
-    node.type === 'hbox' ||
-    node.type === 'vbox' ||
-    node.type === 'void_hbox' ||
-    node.type === 'void_vbox'
-  )
 }
 
 /**
@@ -329,7 +329,10 @@ export class SynctexParser {
           if (secondColon !== -1) {
             const tag = parseInt(line.slice(firstColon + 1, secondColon), 10)
             let name = line.slice(secondColon + 1)
-            if (name.startsWith('./')) name = name.slice(2)
+            // Strip WASM working directory prefix (/work/./) or plain ./
+            const dotSlashIdx = name.indexOf('/./')
+            if (dotSlashIdx !== -1) name = name.slice(dotSlashIdx + 3)
+            else if (name.startsWith('./')) name = name.slice(2)
             result.inputs.set(tag, name)
           }
         } else if (line.startsWith('Magnification:')) {
@@ -455,6 +458,21 @@ export class SynctexParser {
       if (node.type !== 'hbox') continue
       if (this.pointInBox(x, y, node)) {
         container = container ? this.smallestContainer(node, container) : node
+      }
+    }
+
+    // Step 1b: No containing hbox — find nearest hbox by L1 distance.
+    // This handles equation environments where vbox wrappers create vertical
+    // padding between hbox lines, causing clicks to miss all hboxes.
+    if (!container) {
+      let bestDist = Infinity
+      for (const node of nodes) {
+        if (node.type !== 'hbox') continue
+        const d = pointNodeDistance(x, y, node)
+        if (d < bestDist) {
+          bestDist = d
+          container = node
+        }
       }
     }
 

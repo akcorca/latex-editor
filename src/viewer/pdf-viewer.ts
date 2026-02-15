@@ -21,6 +21,7 @@ export class PdfViewer {
   private synctexData: SynctexData | null = null
   private synctexParser = new SynctexParser()
   private onInverseSearch: ((loc: SourceLocation) => void) | null = null
+  private pageObserver: IntersectionObserver | null = null
 
   constructor(container: HTMLElement) {
     this.container = container
@@ -51,16 +52,8 @@ export class PdfViewer {
     this.controlsEl.className = 'pdf-controls'
     this.controlsEl.style.display = 'none'
 
-    const prevBtn = document.createElement('button')
-    prevBtn.textContent = 'Prev'
-    prevBtn.onclick = () => this.prevPage()
-
     this.pageInfo = document.createElement('span')
     this.pageInfo.textContent = '0 / 0'
-
-    const nextBtn = document.createElement('button')
-    nextBtn.textContent = 'Next'
-    nextBtn.onclick = () => this.nextPage()
 
     const zoomOut = document.createElement('button')
     zoomOut.textContent = '-'
@@ -70,7 +63,7 @@ export class PdfViewer {
     zoomIn.textContent = '+'
     zoomIn.onclick = () => this.zoom(0.25)
 
-    this.controlsEl.append(prevBtn, this.pageInfo, nextBtn, zoomOut, zoomIn)
+    this.controlsEl.append(this.pageInfo, zoomOut, zoomIn)
     this.container.appendChild(this.controlsEl)
 
     this.pagesContainer = document.createElement('div')
@@ -102,8 +95,8 @@ export class PdfViewer {
 
     await this.renderAllPages(generation)
 
-    // Index text content for inverse search
-    if (generation === this.renderGeneration) {
+    // Index text content for inverse search (skip when SyncTeX is available)
+    if (generation === this.renderGeneration && !this.synctexData) {
       this.textMapper.clear()
       for (let i = 1; i <= this.pdfDoc.numPages; i++) {
         const page = await this.pdfDoc.getPage(i)
@@ -122,12 +115,13 @@ export class PdfViewer {
   private async renderAllPages(generation: number): Promise<void> {
     if (!this.pdfDoc) return
 
-    this.pageInfo.textContent = `${this.pdfDoc.numPages} page${this.pdfDoc.numPages > 1 ? 's' : ''}`
+    const numPages = this.pdfDoc.numPages
+    this.pageInfo.textContent = `Page ${this.currentPage} / ${numPages}`
 
     // Render into off-screen fragment
     const fragment = document.createDocumentFragment()
 
-    for (let i = 1; i <= this.pdfDoc.numPages; i++) {
+    for (let i = 1; i <= numPages; i++) {
       // Bail if a newer render started
       if (generation !== this.renderGeneration) return
 
@@ -136,6 +130,7 @@ export class PdfViewer {
 
       const wrapper = document.createElement('div')
       wrapper.className = 'pdf-page-container'
+      wrapper.dataset.pageNum = String(i)
 
       const canvas = document.createElement('canvas')
       const dpr = window.devicePixelRatio || 1
@@ -154,20 +149,16 @@ export class PdfViewer {
         const rect = canvas.getBoundingClientRect()
         const x = (e.clientX - rect.left) / this.scale
         const y = (e.clientY - rect.top) / this.scale
-        console.log(`[click] page=${i} x=${x.toFixed(1)} y=${y.toFixed(1)} scale=${this.scale}`)
 
         let loc: SourceLocation | null = null
         if (this.synctexData) {
           loc = this.synctexParser.inverseLookup(this.synctexData, i, x, y)
-          console.log(`[click] synctex result:`, loc)
         }
         if (!loc) {
           loc = this.textMapper.lookup(i, x, y)
-          console.log(`[click] text-mapper result:`, loc)
         }
         if (loc) this.onInverseSearch(loc)
       })
-      canvas.dataset.pageNum = String(i)
 
       wrapper.appendChild(canvas)
       fragment.appendChild(wrapper)
@@ -180,27 +171,34 @@ export class PdfViewer {
     const scrollTop = this.pagesContainer.scrollTop
     this.pagesContainer.replaceChildren(fragment)
     this.pagesContainer.scrollTop = scrollTop
+
+    // Set up scroll-based page tracking
+    this.observePages()
   }
 
-  private prevPage(): void {
-    if (this.currentPage > 1) {
-      this.currentPage--
-      this.scrollToPage(this.currentPage)
+  /** Track which page is most visible via IntersectionObserver */
+  private observePages(): void {
+    if (this.pageObserver) {
+      this.pageObserver.disconnect()
     }
-  }
 
-  private nextPage(): void {
-    if (this.pdfDoc && this.currentPage < this.pdfDoc.numPages) {
-      this.currentPage++
-      this.scrollToPage(this.currentPage)
-    }
-  }
+    this.pageObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            const pageNum = parseInt((entry.target as HTMLElement).dataset.pageNum ?? '1', 10)
+            this.currentPage = pageNum
+            if (this.pdfDoc) {
+              this.pageInfo.textContent = `Page ${pageNum} / ${this.pdfDoc.numPages}`
+            }
+          }
+        }
+      },
+      { root: this.pagesContainer, threshold: 0.5 },
+    )
 
-  private scrollToPage(page: number): void {
-    const pages = this.pagesContainer.querySelectorAll('.pdf-page-container')
-    const target = pages[page - 1]
-    if (target) {
-      target.scrollIntoView({ behavior: 'smooth' })
+    for (const wrapper of this.pagesContainer.querySelectorAll('.pdf-page-container')) {
+      this.pageObserver.observe(wrapper)
     }
   }
 
@@ -221,10 +219,6 @@ export class PdfViewer {
       loc = this.textMapper.forwardLookup(file, line)
     }
     if (!loc) return
-
-    console.log(
-      `[forward] line=${line} → page=${loc.page} x=${loc.x.toFixed(1)} y=${loc.y.toFixed(1)} w=${loc.width.toFixed(1)} h=${loc.height.toFixed(1)} (scaled: left=${(loc.x * this.scale).toFixed(0)}px top=${(loc.y * this.scale).toFixed(0)}px)`,
-    )
 
     // Find the page wrapper
     const pages = this.pagesContainer.querySelectorAll('.pdf-page-container')
@@ -266,6 +260,10 @@ export class PdfViewer {
   }
 
   clear(): void {
+    if (this.pageObserver) {
+      this.pageObserver.disconnect()
+      this.pageObserver = null
+    }
     this.pagesContainer.innerHTML = ''
     this.controlsEl.style.display = 'none'
     if (this.pdfDoc) {

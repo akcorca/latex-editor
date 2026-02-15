@@ -339,9 +339,8 @@ test.describe('SyncTeX E2E Verification', () => {
     expect(accuracy).toBeTruthy()
     console.log('Accuracy:', accuracy)
 
-    // KPI: 80%+ accuracy (within ±2 lines) on complex two-column math document.
-    // Plain text is 100%; equation environments in two-column layout are the main
-    // source of inaccuracy (equation vboxes fall through to page-level container).
-    expect(accuracy!.closeAccuracy).toBeGreaterThanOrEqual(80)
+    // KPI: 90%+ accuracy (within ±2 lines) on complex two-column math document.
+    // Equation-aware nearest-hbox fallback improved accuracy from 84% → 90%+.
+    expect(accuracy!.closeAccuracy).toBeGreaterThanOrEqual(90)
   })
 })
