@@ -77,6 +77,8 @@ extern poolpointer *strstart;     /* string start indices */
 extern strnumber strptr;          /* next free string number */
 extern memoryword *zeqtb;        /* eqtb array (eq_type, equiv, eq_level) */
 extern memoryword *zmem;         /* main memory array (token lists, nodes) */
+extern integer memmin;           /* lowest valid zmem index (typically -2000000) */
+extern integer memmax;           /* highest valid zmem index (typically 6999999) */
 
 /* hashoffset: hash[514] is the first valid entry */
 #define HASH_OFFSET 514
@@ -97,7 +99,9 @@ extern memoryword *zmem;         /* main memory array (token lists, nodes) */
 static int count_macro_args(int eqType, int equiv)
 {
     if (eqType < 111 || eqType > 118) return -1;
-    if (equiv <= 0) return -1;
+    /* zmem is offset-adjusted (zmem = yzmem - memmin), so valid indices
+     * are [memmin, memmax]. Out-of-range access causes WASM OOB trap. */
+    if (equiv < memmin || equiv > memmax) return -1;
 
     /* Skip ref_count node — first actual token is at link */
     int q = zmem[equiv].hh.v.RH;
@@ -105,6 +109,7 @@ static int count_macro_args(int eqType, int equiv)
     int iters = 0;
 
     while (q != 0 && iters < 1000) {
+        if (q < memmin || q > memmax) return -1;  /* bounds check */
         int info = zmem[q].hh.v.LH;
         int cmd = info / 256;
 

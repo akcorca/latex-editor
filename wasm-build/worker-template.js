@@ -663,7 +663,22 @@ function compileLaTeXRoutine() {
 
     console.log("[compile] " + compileMs + "ms" + (usedPreamble ? " (preamble HIT)" : ""));
 
-    if (status === 0) {
+    // Semantic Trace: extract defined commands from pdfTeX hash table.
+    // Run regardless of exit status — the hash table is populated even when
+    // pdfTeX returns status 1 (warnings / non-fatal errors).
+    var engineCommands = null;
+    try {
+        _scanHashTable();
+        var cmdData = FS.readFile(WORKROOT + "/.commands", { encoding: "utf8" });
+        if (cmdData && cmdData.length > 0) {
+            engineCommands = cmdData.trimEnd().split("\n");
+        }
+        try { FS.unlink(WORKROOT + "/.commands"); } catch(e2) {}
+    } catch(e) {}
+
+    // pdfTeX exit code 0 = success, 1 = completed with warnings/errors.
+    // Both can produce valid PDF output, so try to read it for either.
+    if (status === 0 || status === 1) {
         var pdfArrayBuffer = null;
 
         _compileBibtex();
@@ -675,12 +690,12 @@ function compileLaTeXRoutine() {
             pdfArrayBuffer = FS.readFile(pdfPath, { encoding: "binary" });
         } catch(err) {
             console.error("Failed to read PDF output: " + pdfPath);
-            status = -253;
             self.postMessage({
                 "result": "failed",
                 "status": status,
                 "log": self.memlog,
-                "cmd": "compile"
+                "cmd": "compile",
+                "engineCommands": engineCommands
             });
             return;
         }
@@ -699,17 +714,6 @@ function compileLaTeXRoutine() {
                 console.log("No synctex file found");
             }
         }
-
-        // Semantic Trace: extract defined commands from pdfTeX hash table
-        var engineCommands = null;
-        try {
-            _scanHashTable();
-            var cmdData = FS.readFile(WORKROOT + "/.commands", { encoding: "utf8" });
-            if (cmdData && cmdData.length > 0) {
-                engineCommands = cmdData.trimEnd().split("\n");
-            }
-            try { FS.unlink(WORKROOT + "/.commands"); } catch(e2) {}
-        } catch(e) {}
 
         var response = {
             "result": "ok",
@@ -744,7 +748,8 @@ function compileLaTeXRoutine() {
             "status": status,
             "log": self.memlog,
             "cmd": "compile",
-            "preambleSnapshot": false
+            "preambleSnapshot": false,
+            "engineCommands": engineCommands
         });
     }
 }
