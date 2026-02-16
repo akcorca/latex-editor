@@ -193,4 +193,54 @@ describe('createCompletionProvider', () => {
     const suggestions = (result as any).suggestions as any[]
     expect(suggestions.length).toBeGreaterThanOrEqual(2)
   })
+
+  it('shows categorized engine commands', () => {
+    index.updateEngineCommands(['mymacro\t113', 'hbox\t21', 'oldcmd'])
+    const model = mockModel(['\\'])
+    const result = provider.provideCompletionItems(
+      model,
+      pos(1, 2),
+      undefined as any,
+      undefined as any,
+    )
+    const suggestions = (result as any).suggestions as any[]
+    const macro = suggestions.find((s: any) => s.label === '\\mymacro')
+    const prim = suggestions.find((s: any) => s.label === '\\hbox')
+    const unknown = suggestions.find((s: any) => s.label === '\\oldcmd')
+    expect(macro?.detail).toBe('Package macro')
+    expect(prim?.detail).toBe('TeX primitive')
+    expect(unknown?.detail).toBe('Package command')
+  })
+
+  it('provides engine environment completions in \\begin{', () => {
+    index.updateEngineCommands(['myenv', 'endmyenv', 'myother', 'endmyother'])
+    const model = mockModel(['\\begin{my'])
+    const result = provider.provideCompletionItems(
+      model,
+      pos(1, 10),
+      undefined as any,
+      undefined as any,
+    )
+    const suggestions = (result as any).suggestions as any[]
+    const myenv = suggestions.find(
+      (s: any) => s.label === 'myenv' && s.detail === 'Package environment',
+    )
+    expect(myenv).toBeDefined()
+    expect(myenv.sortText).toBe('2_myenv')
+  })
+
+  it('deduplicates engine environments with static environments', () => {
+    index.updateEngineCommands(['equation', 'endequation'])
+    const model = mockModel(['\\begin{eq'])
+    const result = provider.provideCompletionItems(
+      model,
+      pos(1, 10),
+      undefined as any,
+      undefined as any,
+    )
+    const suggestions = (result as any).suggestions as any[]
+    const equations = suggestions.filter((s: any) => s.label === 'equation')
+    // Should only appear once (from static DB, not duplicated by engine)
+    expect(equations).toHaveLength(1)
+  })
 })

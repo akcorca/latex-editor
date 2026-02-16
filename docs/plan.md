@@ -101,10 +101,11 @@ I0에서 Tectonic(Rust, XeTeX 기반)과 SwiftLaTeX pdfTeX WASM을 비교 평가
 * 장기적으로 WebGPU 렌더러의 입력 데이터로 사용
 * 효과: PDF.js 파싱/렌더 단계를 우회하여 즉시 화면 반영
 
-#### (4) Semantic Trace — Phase 1 완료 (I5a 정적 LSP + I5b 해시 테이블 스캔)
+#### (4) Semantic Trace — Phase 1-2 완료 (I5a 정적 LSP + I5b 해시 테이블 스캔 + 환경/분류/로그)
 
 * **Phase 1 완료**: pdfTeX 해시 테이블 스캔 — 컴파일 후 WASM 힙에서 모든 정의된 제어 시퀀스 추출 → LSP Tier 3 자동완성
-* Phase 2 예정: 매크로 확장 시점에 구조화 이벤트 emit (label, ref, cite, section, include)
+* **Phase 2 완료**: eq_type 기반 명령어 분류 (macro/primitive/unknown), `endXXX→XXX` 환경 감지, 컴파일 로그에서 패키지 버전 파싱, hover 정보 추가
+* Phase 3 예정: 매크로 확장 시점에 구조화 이벤트 emit (label, ref, cite, section, include)
 * C 레벨 훅 또는 TeX 매크로 레벨 모두 가능
 * LSP의 "진실"을 정적 파서가 아닌 엔진 실행 트레이스로 구성
 * 효과: Overleaf+일반 에디터 조합을 넘어서는 정확한 자동완성/진단
@@ -607,7 +608,11 @@ cp dist/swiftlatexpdftex.{js,wasm} ../public/swiftlatex/
 | Document outline | ✅ 심볼 프로바이더 | 높음 |
 | Find references | ✅ 프로젝트 인덱스 | 높음 |
 | 패키지 명령어 자동완성 | ✅ 엔진 해시 테이블 스캔 (I5b) | 높음 |
-| 매크로 확장 추적 | ❌ 미구현 (I5b Phase 2) | — |
+| 패키지 환경 자동완성 | ✅ `endXXX→XXX` 패턴 감지 (I5b Phase 2) | 높음 |
+| 명령어 분류 (macro/primitive) | ✅ eq_type 기반 (I5b Phase 2, WASM 재빌드 후 활성) | 높음 |
+| 엔진 명령어/환경 hover | ✅ Package macro / TeX primitive / Package environment | 높음 |
+| 패키지 버전 파싱 | ✅ 컴파일 로그에서 추출 (I5b Phase 2) | 높음 |
+| 매크로 확장 추적 | ❌ 미구현 (I5b Phase 3) | — |
 
 ---
 
@@ -660,7 +665,57 @@ cp dist/swiftlatexpdftex.{js,wasm} ../public/swiftlatex/
 |------|------|----------|------|
 | 0 | 정적 DB (~150 명령어) | `0_` | Function |
 | 1 | 사용자 정의 (`\newcommand` regex) | `1_` | Variable |
-| 2 | 엔진 해시 테이블 (패키지 명령어) | `2_` | Text |
+| 2 | 엔진 해시 테이블 (패키지 명령어) | `2_` | Text (macro) / Keyword (primitive) |
+
+---
+
+## Iteration 5b Phase 2 — 환경 감지, 명령어 분류, 로그 파싱 ✅
+
+**사용자 가치:** 패키지 환경도 자동완성 (`\begin{al` → `align`), 명령어 hover에 "Package macro" / "TeX primitive" 구분 표시, 로드된 패키지 버전 추적
+
+**접근법:** Phase 1의 해시 테이블 스캔을 확장. TypeScript 측 파싱 강화 + C 스캐너에 eq_type 출력 추가.
+
+<details><summary>A. ProjectIndex 데이터 모델 확장</summary>
+
+- [x] `EngineCommandInfo` 인터페이스: `name`, `eqType`, `category` (macro/primitive/unknown)
+- [x] `engineCommands`: `Set<string>` → `Map<string, EngineCommandInfo>`
+- [x] Tab-separated 포맷 파싱 (`name\teqType`) + bare name 하위 호환
+- [x] eq_type 분류: 111-118 → macro, >0 → primitive, else → unknown
+- [x] `engineEnvironments`: `endXXX→XXX` 패턴 감지 (blocklist: csname, group, input, linechar, write)
+- [x] `loadedPackages`: 컴파일 로그에서 `Package: name date version` 파싱
+- [x] 단위 테스트 6개 추가
+
+</details>
+
+<details><summary>B. 자동완성 강화</summary>
+
+- [x] `appendEngineCommands()`: Map 순회, 카테고리별 detail/kind 표시
+- [x] `completeEnvironments()`: Tier 2 엔진 환경 추가 + `seen` set 중복 제거
+- [x] 단위 테스트 3개 추가
+
+</details>
+
+<details><summary>C. Hover 강화</summary>
+
+- [x] `hoverEnv()`: 엔진 환경 fallback ("Package environment")
+- [x] `hoverCommand()`: 엔진 명령어 fallback ("Package macro" / "TeX primitive")
+
+</details>
+
+<details><summary>D. C 스캐너 + 로그 연동</summary>
+
+- [x] `wasm-build/trace-hook.c`: `fprintf(f, "%s\t%d\n", buf, (int)zeqtb[p].hh.u.B0)` — eq_type 출력
+- [x] `src/latex-editor.ts`: `onCompileResult()`에서 `updateLogData(result.log)` 호출
+- [x] WASM 재빌드 전에도 동작 (bare name fallback → category 'unknown')
+
+</details>
+
+### 하위 호환
+
+| 시나리오 | 동작 |
+|----------|------|
+| 구 WASM + 신 TS | Tab 파싱 fallback → `eqType: -1`, `category: 'unknown'` → "Package command" (Phase 1과 동일). 환경 감지는 정상 동작. |
+| 신 WASM + 신 TS | 전체 메타데이터: eq_type 분류, 풍부한 라벨 |
 
 ---
 
@@ -700,11 +755,11 @@ cp dist/swiftlatexpdftex.{js,wasm} ../public/swiftlatex/
 
 # Part III. 로드맵 (미구현)
 
-## Iteration 5b Phase 2 — Semantic Trace (매크로 확장 트레이스)
+## Iteration 5b Phase 3 — Semantic Trace (매크로 확장 트레이스)
 
 **사용자 가치:** "매크로 확장도 추적, 엔진 기반 정밀 진단"
 
-**선행 완료:** Phase 1 (I5b, 해시 테이블 스캔) → 패키지 명령어 자동완성.
+**선행 완료:** Phase 1 (해시 테이블 스캔) → 패키지 명령어 자동완성. Phase 2 (환경 감지, 명령어 분류, 로그 파싱) → 패키지 환경 자동완성 + hover 정보.
 나머지는 pdfTeX C 코드에 semantic trace 훅을 추가하여 매크로 확장을 실시간 추적:
 
 * 매크로 확장 시점에 구조화 이벤트 emit (label, ref, cite, section, include, newcommand)
@@ -804,6 +859,7 @@ pdfTeX `ship_out()`에 PDL 출력 드라이버 추가. WebGPU로 PDL 렌더.
 | I4c | 컴파일 흐름 수정 + WASM 버그 수정 | ✅ |
 | I5a | 정적 LaTeX LSP (completion, go-to-def, hover, symbols, refs) | ✅ |
 | I5b | Semantic Trace Phase 1 (해시 테이블 스캔 → 패키지 명령어 자동완성) | ✅ |
+| I5b-2 | Semantic Trace Phase 2 (환경 감지, 명령어 분류, 로그 파싱, hover) | ✅ |
 | I5c | 정적 번들 최적화 (hyph 제거, pdftex.map gzip preload, onmessage 리팩터) | ✅ |
 
 ## 코드베이스 현황
@@ -811,7 +867,7 @@ pdfTeX `ship_out()`에 PDL 출력 드라이버 추가. WebGPU로 PDL 렌더.
 | 지표 | 수치 |
 |------|------|
 | TypeScript 소스 | 34 파일, ~5,800줄 (프로덕션) |
-| 단위 테스트 | 10 파일, ~2,100줄 |
+| 단위 테스트 | 10 파일, 179 tests |
 | E2E 테스트 | 8 스펙, ~1,070줄 |
 | WASM 빌드 | 7 파일 (Dockerfile, Makefile, build.sh, worker-template.js, wasm-entry.c, kpse-hook.c, trace-hook.c) |
 | 런타임 의존성 | 2개 (monaco-editor, pdfjs-dist) |
@@ -824,9 +880,11 @@ pdfTeX `ship_out()`에 PDL 출력 드라이버 추가. WebGPU로 PDL 렌더.
 
 ### ~~Option B-1: 해시 테이블 스캔~~ → ✅ 완료 (I5b Phase 1)
 
-### Option B-2: Semantic Trace Phase 2 (매크로 확장 트레이스)
+### ~~Option B-2: Semantic Trace Phase 2 (환경/분류/로그)~~ → ✅ 완료 (I5b Phase 2)
 
-해시 테이블 스캔으로 패키지 명령어는 커버됨. 남은 부분:
+### Option B-3: Semantic Trace Phase 3 (매크로 확장 트레이스)
+
+해시 테이블 스캔 + 환경 감지 + 명령어 분류로 패키지 명령어/환경은 커버됨. 남은 부분:
 
 1. pdfTeX C 코드에 매크로 확장 시점 훅 (label, ref, cite, section, include 이벤트)
 2. 매크로 확장 결과 기반 정확한 진단

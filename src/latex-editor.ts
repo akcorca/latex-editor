@@ -433,6 +433,9 @@ export class LatexEditor {
     if (result.engineCommands?.length) {
       this.projectIndex.updateEngineCommands(result.engineCommands)
     }
+    if (result.log) {
+      this.projectIndex.updateLogData(result.log)
+    }
 
     if (result.success && result.pdf) {
       for (const path of this.fs.listFiles()) {

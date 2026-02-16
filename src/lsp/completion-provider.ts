@@ -105,13 +105,19 @@ function appendEngineCommands(
   index: ProjectIndex,
 ): void {
   const seen = new Set(suggestions.map((s) => (s.label as string).slice(1)))
-  for (const name of index.getEngineCommands()) {
+  for (const [name, info] of index.getEngineCommands()) {
     if (!name.startsWith(prefix) || seen.has(name)) continue
+    const detail =
+      info.category === 'macro'
+        ? 'Package macro'
+        : info.category === 'primitive'
+          ? 'TeX primitive'
+          : 'Package command'
     suggestions.push({
       label: `\\${name}`,
-      kind: CompletionItemKind.Text,
+      kind: info.category === 'primitive' ? CompletionItemKind.Keyword : CompletionItemKind.Text,
       insertText: name,
-      detail: 'Package command',
+      detail,
       range,
       sortText: `2_${name}`,
     })
@@ -172,9 +178,11 @@ function completeEnvironments(
   isBegin: boolean,
 ): CompletionItem[] {
   const suggestions: CompletionItem[] = []
-  // Static environments
+  const seen = new Set<string>()
+  // Tier 0: Static environments
   for (const env of LATEX_ENVIRONMENTS) {
     if (!env.name.startsWith(prefix)) continue
+    seen.add(env.name)
     const item: CompletionItem = {
       label: env.name,
       kind: CompletionItemKind.Module,
@@ -185,9 +193,10 @@ function completeEnvironments(
     if (isBegin) item.sortText = `0_${env.name}`
     suggestions.push(item)
   }
-  // Environments from project
+  // Tier 1: Environments from project
   for (const name of index.getAllEnvironments()) {
-    if (!name.startsWith(prefix)) continue
+    if (!name.startsWith(prefix) || seen.has(name)) continue
+    seen.add(name)
     suggestions.push({
       label: name,
       kind: CompletionItemKind.Module,
@@ -195,6 +204,18 @@ function completeEnvironments(
       detail: 'Used in project',
       range,
       sortText: `1_${name}`,
+    })
+  }
+  // Tier 2: Engine-detected environments (from endXXX pattern)
+  for (const name of index.getEngineEnvironments()) {
+    if (!name.startsWith(prefix) || seen.has(name)) continue
+    suggestions.push({
+      label: name,
+      kind: CompletionItemKind.Module,
+      insertText: name,
+      detail: 'Package environment',
+      range,
+      sortText: `2_${name}`,
     })
   }
   return suggestions

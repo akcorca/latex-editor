@@ -124,4 +124,56 @@ describe('ProjectIndex', () => {
     expect(index.getBibEntries()).toHaveLength(1)
     expect(index.getBibEntries()[0]!.key).toBe('knuth84')
   })
+
+  // --- Engine commands (Phase 2: tab-separated, env detection, categorization) ---
+
+  it('parses bare names (backward compat with old WASM)', () => {
+    const index = new ProjectIndex()
+    index.updateEngineCommands(['align', 'gather', 'hbox'])
+    const cmds = index.getEngineCommands()
+    expect(cmds.size).toBe(3)
+    expect(cmds.get('align')!.eqType).toBe(-1)
+    expect(cmds.get('align')!.category).toBe('unknown')
+  })
+
+  it('parses tab-separated name\\teqType format', () => {
+    const index = new ProjectIndex()
+    index.updateEngineCommands(['align\t113', 'hbox\t21'])
+    expect(index.getEngineCommands().get('align')!.eqType).toBe(113)
+    expect(index.getEngineCommands().get('align')!.category).toBe('macro')
+    expect(index.getEngineCommands().get('hbox')!.eqType).toBe(21)
+    expect(index.getEngineCommands().get('hbox')!.category).toBe('primitive')
+  })
+
+  it('detects environments from endXXX pattern', () => {
+    const index = new ProjectIndex()
+    index.updateEngineCommands(['align', 'endalign', 'gather', 'endgather', 'endcsname'])
+    const envs = index.getEngineEnvironments()
+    expect(envs.has('align')).toBe(true)
+    expect(envs.has('gather')).toBe(true)
+    // csname is blocklisted
+    expect(envs.has('csname')).toBe(false)
+  })
+
+  it('does not detect env if base name is missing', () => {
+    const index = new ProjectIndex()
+    index.updateEngineCommands(['endalign'])
+    expect(index.getEngineEnvironments().has('align')).toBe(false)
+  })
+
+  it('parses package info from log', () => {
+    const index = new ProjectIndex()
+    index.updateLogData(
+      'Package: amsmath 2020/09/23 v2.17i AMS math features\n' +
+        'Package: graphicx 2019/11/30 v1.2a Enhanced LaTeX Graphics\n',
+    )
+    expect(index.getLoadedPackages().get('amsmath')).toBe('v2.17i')
+    expect(index.getLoadedPackages().get('graphicx')).toBe('v1.2a')
+  })
+
+  it('handles log with no package lines', () => {
+    const index = new ProjectIndex()
+    index.updateLogData('This is pdfTeX, Version 3.14159265\nNo packages here.')
+    expect(index.getLoadedPackages().size).toBe(0)
+  })
 })

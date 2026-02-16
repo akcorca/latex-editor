@@ -126,8 +126,7 @@ void scanHashTable(void)
         if (skip) continue;
         buf[len] = '\0';
 
-        fputs(buf, f);
-        fputc('\n', f);
+        fprintf(f, "%s\t%d\n", buf, (int)zeqtb[p].hh.u.B0);
     }
 
     fclose(f);

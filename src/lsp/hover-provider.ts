@@ -12,14 +12,20 @@ function makeHover(contents: string[], lineNum: number, start: number, end: numb
   }
 }
 
-function hoverEnv(m: RegExpMatchArray, lineNum: number): Hover {
+function hoverEnv(m: RegExpMatchArray, lineNum: number, index: ProjectIndex): Hover {
   const envName = m[1]!
   const start = m.index!
   const envInfo = getEnvironmentByName(envName)
-  const contents: string[] = [`**${envName}** environment`]
-  if (envInfo?.detail) contents.push(envInfo.detail)
-  if (envInfo?.package) contents.push(`Package: \`${envInfo.package}\``)
-  return makeHover(contents, lineNum, start, start + m[0].length)
+  if (envInfo) {
+    const contents: string[] = [`**${envName}** environment`]
+    if (envInfo.detail) contents.push(envInfo.detail)
+    if (envInfo.package) contents.push(`Package: \`${envInfo.package}\``)
+    return makeHover(contents, lineNum, start, start + m[0].length)
+  }
+  if (index.getEngineEnvironments().has(envName)) {
+    return makeHover([`**${envName}** — Package environment`], lineNum, start, start + m[0].length)
+  }
+  return makeHover([`**${envName}** environment`], lineNum, start, start + m[0].length)
 }
 
 function hoverRef(m: RegExpMatchArray, lineNum: number, index: ProjectIndex): Hover {
@@ -76,6 +82,16 @@ function hoverCommand(m: RegExpMatchArray, lineNum: number, index: ProjectIndex)
       end,
     )
   }
+  const engineCmd = index.getEngineCommands().get(name)
+  if (engineCmd) {
+    const label =
+      engineCmd.category === 'macro'
+        ? 'Package macro'
+        : engineCmd.category === 'primitive'
+          ? 'TeX primitive'
+          : 'Package command'
+    return makeHover([`**\\${name}** — ${label}`], lineNum, start, end)
+  }
   return null
 }
 
@@ -90,7 +106,7 @@ export function createHoverProvider(index: ProjectIndex): monaco.languages.Hover
       const lineNum = position.lineNumber
 
       const envMatch = findMatchAtCol(line, /\\(?:begin|end)\{(\w+\*?)\}/g, col)
-      if (envMatch) return hoverEnv(envMatch, lineNum)
+      if (envMatch) return hoverEnv(envMatch, lineNum, index)
 
       const refMatch = findMatchAtCol(
         line,
