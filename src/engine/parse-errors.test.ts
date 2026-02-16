@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseTexErrors } from './parse-errors'
+import { buildFileContext, parseTexErrors } from './parse-errors'
 
 describe('parseTexErrors', () => {
   it('returns empty array for clean log', () => {
@@ -180,5 +180,98 @@ describe('parseTexErrors', () => {
     expect(errors).toHaveLength(1)
     expect(errors[0]!.severity).toBe('warning')
     expect(errors[0]!.line).toBe(0)
+  })
+
+  it('tracks file context from parenthesized paths', () => {
+    const log = [
+      'This is pdfTeX, Version 1.40.22',
+      '(./main.tex',
+      "LaTeX Warning: Reference `sec:foo' on input line 67 undefined.",
+      '(./algebra.tex',
+      '! Undefined control sequence.',
+      'l.5 \\badcmd',
+      ')',
+      "LaTeX Warning: Reference `sec:bar' on input line 100 undefined.",
+      ')',
+    ].join('\n')
+
+    const errors = parseTexErrors(log)
+    expect(errors).toHaveLength(3)
+    expect(errors[0]).toMatchObject({ file: 'main.tex', line: 67 })
+    expect(errors[1]).toMatchObject({ file: 'algebra.tex', line: 5 })
+    expect(errors[2]).toMatchObject({ file: 'main.tex', line: 100 })
+  })
+
+  it('normalizes /work/./ paths in file context', () => {
+    const log = ['(/work/./main.tex', '! Missing $ inserted.', 'l.10 x', ')'].join('\n')
+
+    const errors = parseTexErrors(log)
+    expect(errors[0]).toMatchObject({ file: 'main.tex', line: 10 })
+  })
+
+  it('handles multiple file opens on a single line', () => {
+    const log = [
+      '(./main.tex(/usr/share/texlive/tex/latex/base/article.cls)',
+      '(./chapter.tex',
+      '! Error.',
+      'l.3 x',
+      '))',
+    ].join('\n')
+
+    const errors = parseTexErrors(log)
+    expect(errors[0]).toMatchObject({ file: 'chapter.tex', line: 3 })
+  })
+
+  it('does not treat non-file parentheses as file opens', () => {
+    const log = [
+      '(./main.tex',
+      'Overfull \\hbox (10.0pt too wide) in paragraph at lines 5--8',
+      ' [] ',
+      ')',
+    ].join('\n')
+
+    const errors = parseTexErrors(log)
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toMatchObject({ file: 'main.tex', line: 5 })
+  })
+})
+
+describe('buildFileContext', () => {
+  it('tracks nested file opens and closes', () => {
+    const lines = [
+      '(./main.tex',
+      'some content',
+      '(./sub.tex',
+      'sub content',
+      ')',
+      'back in main',
+      ')',
+    ]
+    const ctx = buildFileContext(lines)
+    expect(ctx[0]).toBe('main.tex')
+    expect(ctx[1]).toBe('main.tex')
+    expect(ctx[2]).toBe('sub.tex')
+    expect(ctx[3]).toBe('sub.tex')
+    expect(ctx[4]).toBe('main.tex')
+    expect(ctx[5]).toBe('main.tex')
+    expect(ctx[6]).toBe('')
+  })
+
+  it('returns empty string when no file context', () => {
+    const lines = ['This is pdfTeX', 'No files here']
+    const ctx = buildFileContext(lines)
+    expect(ctx[0]).toBe('')
+    expect(ctx[1]).toBe('')
+  })
+
+  it('handles system file paths', () => {
+    const sysPath = '/usr/share/texlive/texmf-dist/tex/latex/base/article.cls'
+    const lines = ['(./main.tex', `(${sysPath}`, 'class content', ')', 'back in main']
+    const ctx = buildFileContext(lines)
+    expect(ctx[0]).toBe('main.tex')
+    expect(ctx[1]).toBe(sysPath)
+    expect(ctx[2]).toBe(sysPath)
+    expect(ctx[3]).toBe('main.tex')
+    expect(ctx[4]).toBe('main.tex')
   })
 })

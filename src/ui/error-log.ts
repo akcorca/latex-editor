@@ -1,10 +1,38 @@
 import type { TexError } from '../types'
 
+function formatPrefix(err: TexError): string {
+  if (err.file && err.line > 0) return `${err.file}:${err.line}: `
+  if (err.file) return `${err.file}: `
+  if (err.line > 0) return `L${err.line}: `
+  return ''
+}
+
+function createErrorEntry(
+  err: TexError,
+  onClick: (file: string, line: number) => void,
+): HTMLElement {
+  const entry = document.createElement('div')
+  entry.className = `log-entry ${err.severity}`
+  entry.textContent = `${formatPrefix(err)}${err.message}`
+
+  if (err.line > 0) {
+    entry.classList.add('clickable')
+    const file = err.file ?? ''
+    const line = err.line
+    entry.onclick = () => onClick(file, line)
+    entry.title = err.file
+      ? `Click to jump to ${err.file}:${err.line}`
+      : `Click to jump to line ${err.line}`
+  }
+
+  return entry
+}
+
 export class ErrorLog {
   private container: HTMLElement
-  private onClickError: (line: number) => void
+  private onClickError: (file: string, line: number) => void
 
-  constructor(container: HTMLElement, onClickError: (line: number) => void) {
+  constructor(container: HTMLElement, onClickError: (file: string, line: number) => void) {
     this.container = container
     this.onClickError = onClickError
   }
@@ -45,18 +73,7 @@ export class ErrorLog {
     if (errors.length > 0) {
       this.container.classList.add('open')
       for (const err of errors) {
-        const entry = document.createElement('div')
-        entry.className = `log-entry ${err.severity}`
-        const lineStr = err.line > 0 ? `L${err.line}: ` : ''
-        entry.textContent = `${lineStr}${err.message}`
-
-        if (err.line > 0) {
-          entry.classList.add('clickable')
-          entry.onclick = () => this.onClickError(err.line)
-          entry.title = 'Click to jump to line'
-        }
-
-        this.container.appendChild(entry)
+        this.container.appendChild(createErrorEntry(err, this.onClickError))
       }
     }
   }

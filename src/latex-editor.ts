@@ -9,7 +9,13 @@ import { ProjectIndex } from './lsp/project-index'
 import { registerLatexProviders } from './lsp/register-providers'
 import { initPerfOverlay, perf } from './perf/metrics'
 import { SynctexParser } from './synctex/synctex-parser'
-import type { AppStatus, CompileResult, LatexEditorEventMap, LatexEditorOptions } from './types'
+import type {
+  AppStatus,
+  CompileResult,
+  LatexEditorEventMap,
+  LatexEditorOptions,
+  TexError,
+} from './types'
 import { ErrorLog } from './ui/error-log'
 import { setDiagnosticMarkers, setErrorMarkers } from './ui/error-markers'
 import { FileTree } from './ui/file-tree'
@@ -50,6 +56,7 @@ export class LatexEditor {
   private lastForwardLine = -1
   private lastForwardFile = ''
   private switchingModel = false
+  private lastCompileErrors: TexError[] = []
   private disposed = false
 
   // --- Events ---
@@ -330,8 +337,13 @@ export class LatexEditor {
 
     // Error Log
     const errorLogContainer = this.root.querySelector<HTMLElement>('.le-error-log')!
-    this.errorLog = new ErrorLog(errorLogContainer, (line) => {
-      revealLine(this.editor, line)
+    this.errorLog = new ErrorLog(errorLogContainer, (file, line) => {
+      if (file && file !== this.currentFile) {
+        this.onFileSelect(file)
+        requestAnimationFrame(() => revealLine(this.editor, line))
+      } else {
+        revealLine(this.editor, line)
+      }
     })
 
     // Compile Scheduler
@@ -548,8 +560,8 @@ export class LatexEditor {
       this.setStatus(result.errors.length > 0 ? 'error' : 'ready')
     }
 
-    this.errorLog.update(result.errors)
-    setErrorMarkers(this.editor, result.errors)
+    this.lastCompileErrors = result.errors
+    setErrorMarkers(result.errors)
     this.updateAuxIndex()
     this.runDiagnostics()
     this.maybeRecompile(result)
@@ -627,6 +639,14 @@ export class LatexEditor {
   private runDiagnostics(): void {
     const diagnostics = computeDiagnostics(this.projectIndex)
     setDiagnosticMarkers(diagnostics)
+    // Merge compile errors + LSP diagnostics into the error log
+    const diagAsErrors: TexError[] = diagnostics.map((d) => ({
+      line: d.line,
+      message: d.message,
+      severity: d.severity === 'info' ? ('warning' as const) : d.severity,
+      file: d.file,
+    }))
+    this.errorLog.update([...this.lastCompileErrors, ...diagAsErrors])
   }
 
   private downloadPdf(): void {

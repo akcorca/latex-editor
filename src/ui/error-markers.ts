@@ -3,17 +3,22 @@ import * as monaco from 'monaco-editor'
 import type { Diagnostic } from '../lsp/diagnostic-provider'
 import type { TexError } from '../types'
 
-/** Update Monaco editor markers from TeX compile errors. */
-export function setErrorMarkers(
-  editor: Monaco.editor.IStandaloneCodeEditor,
-  errors: TexError[],
-): void {
-  const model = editor.getModel()
-  if (!model) return
+/** Update Monaco editor markers from TeX compile errors, routed to each file's model. */
+export function setErrorMarkers(errors: TexError[]): void {
+  // Group errors by file
+  const byFile = new Map<string, TexError[]>()
+  for (const e of errors) {
+    if (!e.file || e.line <= 0) continue
+    const list = byFile.get(e.file) ?? []
+    list.push(e)
+    byFile.set(e.file, list)
+  }
 
-  const markers: Monaco.editor.IMarkerData[] = errors
-    .filter((e) => e.line > 0)
-    .map((e) => ({
+  // Set markers on each model
+  for (const model of monaco.editor.getModels()) {
+    const filePath = model.uri.path.startsWith('/') ? model.uri.path.slice(1) : model.uri.path
+    const fileErrors = byFile.get(filePath) ?? []
+    const markers: Monaco.editor.IMarkerData[] = fileErrors.map((e) => ({
       severity:
         e.severity === 'error' ? monaco.MarkerSeverity.Error : monaco.MarkerSeverity.Warning,
       startLineNumber: e.line,
@@ -23,8 +28,8 @@ export function setErrorMarkers(
       message: e.message,
       source: 'TeX',
     }))
-
-  monaco.editor.setModelMarkers(model, 'tex', markers)
+    monaco.editor.setModelMarkers(model, 'tex', markers)
+  }
 }
 
 const DIAG_SEVERITY: Record<Diagnostic['severity'], Monaco.MarkerSeverity> = {

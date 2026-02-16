@@ -1,5 +1,65 @@
 import type { TexError } from '../types'
 
+const FILE_EXT_RE = /\.(tex|sty|cls|aux|fd|def|cfg|clo|bbl|bst|ltx|dtx|ldf|map|enc|tfm|fmt)$/
+
+/** Check if a string extracted after '(' looks like a file path */
+function looksLikeFile(s: string): boolean {
+  if (s.startsWith('./') || s.startsWith('/')) return true
+  return FILE_EXT_RE.test(s)
+}
+
+/** Normalize a pdfTeX log path to a project-relative path */
+function normalizePath(p: string): string {
+  const dotSlashIdx = p.indexOf('/./')
+  if (dotSlashIdx !== -1) return p.slice(dotSlashIdx + 3)
+  if (p.startsWith('./')) return p.slice(2)
+  if (p.startsWith('/work/')) return p.slice(6)
+  return p
+}
+
+/** Try to extract a file path after '(' at position i in line. Returns chars consumed or 0. */
+function tryFileOpen(line: string, i: number, stack: string[]): number {
+  const rest = line.slice(i + 1)
+  const m = rest.match(/^([^()\s]+)/)
+  if (m && looksLikeFile(m[1]!)) {
+    stack.push(normalizePath(m[1]!))
+    return 1 + m[1]!.length
+  }
+  return 0
+}
+
+/**
+ * Build an array mapping each log line to the current file from pdfTeX's
+ * parenthesized file open/close markers: `(./file.tex ... )`
+ */
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: paren-matching scanner has inherent nesting
+export function buildFileContext(lines: string[]): string[] {
+  const stack: string[] = []
+  const fileAtLine: string[] = []
+  let skipDepth = 0
+
+  for (const line of lines) {
+    let i = 0
+    while (i < line.length) {
+      if (line[i] === '(') {
+        const consumed = tryFileOpen(line, i, stack)
+        if (consumed > 0) {
+          i += consumed
+          continue
+        }
+        skipDepth++
+      } else if (line[i] === ')') {
+        if (skipDepth > 0) skipDepth--
+        else if (stack.length > 0) stack.pop()
+      }
+      i++
+    }
+    fileAtLine.push(stack.length > 0 ? stack[stack.length - 1]! : '')
+  }
+
+  return fileAtLine
+}
+
 /** Search up to 5 lines ahead for "l.42 ..." pattern */
 function findLineNumber(lines: string[], start: number): number {
   const end = Math.min(start + 5, lines.length)
@@ -60,14 +120,29 @@ function tryBoxWarning(line: string, nextLine: string, out: TexError[]): boolean
 export function parseTexErrors(log: string): TexError[] {
   const errors: TexError[] = []
   const lines = log.split('\n')
+  const fileContext = buildFileContext(lines)
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!
-    if (tryTexError(line, lines, i, errors)) continue
-    if (tryLatexWarning(line, errors)) continue
-    if (tryPackageError(line, lines, i, errors)) continue
-    if (tryPackageWarning(line, errors)) continue
-    tryBoxWarning(line, lines[i + 1] ?? '', errors)
+    const prevLen = errors.length
+    if (tryTexError(line, lines, i, errors)) {
+      // matched
+    } else if (tryLatexWarning(line, errors)) {
+      // matched
+    } else if (tryPackageError(line, lines, i, errors)) {
+      // matched
+    } else if (tryPackageWarning(line, errors)) {
+      // matched
+    } else {
+      tryBoxWarning(line, lines[i + 1] ?? '', errors)
+    }
+    // Set file on any newly added errors
+    const file = fileContext[i]
+    if (file) {
+      for (let j = prevLen; j < errors.length; j++) {
+        errors[j]!.file = file
+      }
+    }
   }
 
   return errors

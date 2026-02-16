@@ -36,7 +36,8 @@ cosets, then $|G| = k \\cdot |H|$, so $|H| \\mid |G|$.
 \\end{proof}
 
 \\begin{corollary}
-The order of any element $g \\in G$ divides $|G|$.
+By Theorem~\\ref{thm:lagrange}, the order of any element
+$g \\in G$ divides $|G|$.
 \\end{corollary}
 
 \\subsection{Rings and Fields}
@@ -109,6 +110,11 @@ Several important series:
     &= \\ln 2
     \\label{eq:altharmonic}
 \\end{align}
+The geometric series~\\eqref{eq:geometric} converges for
+$|x|<1$, while~\\eqref{eq:exp} converges everywhere.
+The Basel series~\\eqref{eq:basel} was solved by Euler, and
+the alternating harmonic series~\\eqref{eq:altharmonic}
+follows from the Taylor expansion of $\\ln(1+x)$.
 
 \\subsection{Differentiation and Integration}
 
@@ -119,6 +125,8 @@ Taylor's theorem with Lagrange remainder:
     + \\frac{f^{(n+1)}(c)}{(n+1)!}(x-a)^{n+1}
 \\end{equation}
 for some $c$ between $a$ and $x$.
+Equation~\\eqref{eq:taylor} is the backbone of local
+approximation theory.
 
 The Gaussian integral:
 \\begin{equation}
@@ -729,8 +737,9 @@ and $B_n = \\frac{2}{L} \\int_0^L
 \\label{sec:conclusion}
 %% ============================================================
 
-This survey has covered fundamental results across eight
-areas of mathematics:
+As outlined in Section~\\ref{sec:intro}, this survey has
+covered fundamental results across eight areas of
+mathematics:
 
 \\begin{enumerate}
   \\item \\textbf{Algebra} (Section~\\ref{sec:algebra}):
