@@ -59,6 +59,34 @@ describe('createHoverProvider', () => {
     expect(contents[1]).toBe('Arguments: 1')
   })
 
+  it('enriches static DB command hover with engine arg count', () => {
+    const index = new ProjectIndex()
+    // frac is in the static LATEX_COMMANDS DB
+    index.updateEngineCommands(['frac\t113\t2'])
+    const provider = createHoverProvider(index)
+    const hover = provider.provideHover!(mockModel(['\\frac']), pos(1, 2), undefined as any)
+    expect(hover).not.toBeNull()
+    const contents = (hover as any).contents.map((c: any) => c.value)
+    expect(contents[0]).toContain('frac')
+    expect(contents.some((c: any) => c === 'Arguments: 2')).toBe(true)
+  })
+
+  it('enriches static DB environment hover with engine arg count', () => {
+    const index = new ProjectIndex()
+    // tabular is in the static LATEX_ENVIRONMENTS DB
+    index.updateEngineCommands(['tabular\t113\t1', 'endtabular\t113\t0'])
+    const provider = createHoverProvider(index)
+    const hover = provider.provideHover!(
+      mockModel(['\\begin{tabular}']),
+      pos(1, 9),
+      undefined as any,
+    )
+    expect(hover).not.toBeNull()
+    const contents = (hover as any).contents.map((c: any) => c.value)
+    expect(contents[0]).toContain('tabular')
+    expect(contents.some((c: any) => c === 'Arguments: 1')).toBe(true)
+  })
+
   it('no arg line for engine env with unknown arg count', () => {
     const index = new ProjectIndex()
     index.updateEngineCommands(['myenv', 'endmyenv'])

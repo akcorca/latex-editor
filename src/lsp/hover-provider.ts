@@ -32,6 +32,8 @@ function hoverEnv(m: RegExpMatchArray, lineNum: number, index: ProjectIndex): Ho
     const contents: string[] = [`**${envName}** environment`]
     if (envInfo.detail) contents.push(envInfo.detail)
     if (envInfo.package) contents.push(`Package: \`${envInfo.package}\``)
+    const engineInfo = index.getEngineCommands().get(envName)
+    if (engineInfo && engineInfo.argCount > 0) contents.push(`Arguments: ${engineInfo.argCount}`)
     return makeHover(contents, lineNum, start, start + m[0].length)
   }
   if (index.getEngineEnvironments().has(envName)) {
@@ -85,6 +87,8 @@ function hoverCommand(m: RegExpMatchArray, lineNum: number, index: ProjectIndex)
     contents.push(`**\\${name}**${cmdInfo.detail ? ` — ${cmdInfo.detail}` : ''}`)
     if (cmdInfo.documentation) contents.push(cmdInfo.documentation)
     if (cmdInfo.package) contents.push(`Package: \`${cmdInfo.package}\``)
+    const engineInfo = index.getEngineCommands().get(name)
+    if (engineInfo) appendArgInfo(contents, engineInfo)
     return makeHover(contents, lineNum, start, end)
   }
   const userCmd = index.findCommandDef(name)
