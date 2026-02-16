@@ -600,7 +600,10 @@ function compileLaTeXRoutine() {
         if (e instanceof ExitStatus) {
             status = e.status;
         } else {
-            throw e;
+            // Emscripten abort() or other fatal error — do NOT re-throw.
+            // Re-throwing skips file restore and response, hanging the host forever.
+            console.error("[compile] runMain crashed: " + e);
+            status = -254;
         }
     }
     var compileMs = Math.round(performance.now() - compileStart);
@@ -638,6 +641,10 @@ function compileLaTeXRoutine() {
             texlive200_cache["10/swiftlatexpdftex.fmt"] = TEXCACHEROOT + "/swiftlatexpdftex.fmt";
             FS.writeFile(TEXCACHEROOT + "/pdflatex.fmt", self._fmtData);
             texlive200_cache["10/pdflatex.fmt"] = TEXCACHEROOT + "/pdflatex.fmt";
+            // Must also write to WORKROOT — open_fmt_file() tries fopen() in CWD first.
+            // Without this, the stale preamble format left by the normal compile path
+            // would be loaded instead of the base format, causing permanent failure.
+            FS.writeFile(WORKROOT + "/pdflatex.fmt", self._fmtData);
         }
 
         writeTexmfCnf();
@@ -648,7 +655,8 @@ function compileLaTeXRoutine() {
             if (e instanceof ExitStatus) {
                 status = e.status;
             } else {
-                throw e;
+                console.error("[compile] fallback runMain crashed: " + e);
+                status = -254;
             }
         }
     }
@@ -747,7 +755,8 @@ function compileFormatRoutine() {
         if (e instanceof ExitStatus) {
             status = e.status;
         } else {
-            throw e;
+            console.error("[compile] compileFormat crashed: " + e);
+            status = -254;
         }
     }
 

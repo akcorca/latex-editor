@@ -487,6 +487,12 @@ export class LatexEditor {
       this.engine.compile().then((r) => {
         this.pendingRecompile = false
         this.onCompileResult(r)
+        // Re-schedule: maybeRecompile bypasses the scheduler, so the engine
+        // was 'compiling' while the scheduler didn't know. If the user edited
+        // during the recompile, the scheduler's debounced compile was silently
+        // dropped (engine not ready at line 54 of compile-scheduler). This
+        // re-schedule picks up any such dropped edits.
+        this.syncAndCompile()
       })
     } else {
       this.pendingRecompile = false
