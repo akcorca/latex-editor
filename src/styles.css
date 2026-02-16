@@ -70,7 +70,7 @@ body {
   min-width: 200px;
 }
 
-.le-viewer {
+.le-root .le-viewer {
   flex: 1;
   min-width: 200px;
   background: #333;
