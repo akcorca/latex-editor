@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { createHoverProvider } from '../hover-provider'
 import { ProjectIndex } from '../project-index'
 
-function mockModel(lines: string[]): any {
+interface MockModel {
+  getLineContent(lineNumber: number): string
+}
+
+interface HoverResult {
+  contents: Array<{ value: string }>
+}
+
+function mockModel(lines: string[]): MockModel {
   return {
     getLineContent(lineNumber: number) {
       return lines[lineNumber - 1] ?? ''
@@ -10,8 +18,18 @@ function mockModel(lines: string[]): any {
   }
 }
 
-function pos(lineNumber: number, column: number): any {
-  return { lineNumber, column }
+// biome-ignore lint/suspicious/noExplicitAny: Monaco types too complex to fully mock
+function getHover(
+  provider: ReturnType<typeof createHoverProvider>,
+  model: MockModel,
+  line: number,
+  col: number,
+): HoverResult | null {
+  return provider.provideHover!(
+    model as any,
+    { lineNumber: line, column: col } as any,
+    undefined as any,
+  ) as HoverResult | null
 }
 
 describe('createHoverProvider', () => {
@@ -19,82 +37,76 @@ describe('createHoverProvider', () => {
     const index = new ProjectIndex()
     index.updateEngineCommands(['myfrac\t113\t2'])
     const provider = createHoverProvider(index)
-    const hover = provider.provideHover!(mockModel(['\\myfrac']), pos(1, 2), undefined as any)
+    const hover = getHover(provider, mockModel(['\\myfrac']), 1, 2)
     expect(hover).not.toBeNull()
-    const contents = (hover as any).contents.map((c: any) => c.value)
-    expect(contents[0]).toContain('Package macro')
-    expect(contents[1]).toBe('Arguments: 2')
+    const values = hover!.contents.map((c) => c.value)
+    expect(values[0]).toContain('Package macro')
+    expect(values[1]).toBe('Arguments: 2')
   })
 
   it('shows "Arguments: none" for 0-arg macros', () => {
     const index = new ProjectIndex()
     index.updateEngineCommands(['mypar\t113\t0'])
     const provider = createHoverProvider(index)
-    const hover = provider.provideHover!(mockModel(['\\mypar']), pos(1, 2), undefined as any)
+    const hover = getHover(provider, mockModel(['\\mypar']), 1, 2)
     expect(hover).not.toBeNull()
-    const contents = (hover as any).contents.map((c: any) => c.value)
-    expect(contents[0]).toContain('Package macro')
-    expect(contents[1]).toBe('Arguments: none')
+    const values = hover!.contents.map((c) => c.value)
+    expect(values[0]).toContain('Package macro')
+    expect(values[1]).toBe('Arguments: none')
   })
 
   it('does not show arg info for primitives', () => {
     const index = new ProjectIndex()
     index.updateEngineCommands(['myprim\t21\t-1'])
     const provider = createHoverProvider(index)
-    const hover = provider.provideHover!(mockModel(['\\myprim']), pos(1, 2), undefined as any)
+    const hover = getHover(provider, mockModel(['\\myprim']), 1, 2)
     expect(hover).not.toBeNull()
-    const contents = (hover as any).contents.map((c: any) => c.value)
-    expect(contents[0]).toContain('TeX primitive')
-    expect(contents).toHaveLength(1)
+    const values = hover!.contents.map((c) => c.value)
+    expect(values[0]).toContain('TeX primitive')
+    expect(values).toHaveLength(1)
   })
 
   it('shows arg count for engine environments', () => {
     const index = new ProjectIndex()
     index.updateEngineCommands(['mytab\t113\t1', 'endmytab\t113\t0'])
     const provider = createHoverProvider(index)
-    const hover = provider.provideHover!(mockModel(['\\begin{mytab}']), pos(1, 9), undefined as any)
+    const hover = getHover(provider, mockModel(['\\begin{mytab}']), 1, 9)
     expect(hover).not.toBeNull()
-    const contents = (hover as any).contents.map((c: any) => c.value)
-    expect(contents[0]).toContain('Package environment')
-    expect(contents[1]).toBe('Arguments: 1')
+    const values = hover!.contents.map((c) => c.value)
+    expect(values[0]).toContain('Package environment')
+    expect(values[1]).toBe('Arguments: 1')
   })
 
   it('enriches static DB command hover with engine arg count', () => {
     const index = new ProjectIndex()
-    // frac is in the static LATEX_COMMANDS DB
     index.updateEngineCommands(['frac\t113\t2'])
     const provider = createHoverProvider(index)
-    const hover = provider.provideHover!(mockModel(['\\frac']), pos(1, 2), undefined as any)
+    const hover = getHover(provider, mockModel(['\\frac']), 1, 2)
     expect(hover).not.toBeNull()
-    const contents = (hover as any).contents.map((c: any) => c.value)
-    expect(contents[0]).toContain('frac')
-    expect(contents.some((c: any) => c === 'Arguments: 2')).toBe(true)
+    const values = hover!.contents.map((c) => c.value)
+    expect(values[0]).toContain('frac')
+    expect(values.some((c) => c === 'Arguments: 2')).toBe(true)
   })
 
   it('enriches static DB environment hover with engine arg count', () => {
     const index = new ProjectIndex()
-    // tabular is in the static LATEX_ENVIRONMENTS DB
     index.updateEngineCommands(['tabular\t113\t1', 'endtabular\t113\t0'])
     const provider = createHoverProvider(index)
-    const hover = provider.provideHover!(
-      mockModel(['\\begin{tabular}']),
-      pos(1, 9),
-      undefined as any,
-    )
+    const hover = getHover(provider, mockModel(['\\begin{tabular}']), 1, 9)
     expect(hover).not.toBeNull()
-    const contents = (hover as any).contents.map((c: any) => c.value)
-    expect(contents[0]).toContain('tabular')
-    expect(contents.some((c: any) => c === 'Arguments: 1')).toBe(true)
+    const values = hover!.contents.map((c) => c.value)
+    expect(values[0]).toContain('tabular')
+    expect(values.some((c) => c === 'Arguments: 1')).toBe(true)
   })
 
   it('no arg line for engine env with unknown arg count', () => {
     const index = new ProjectIndex()
     index.updateEngineCommands(['myenv', 'endmyenv'])
     const provider = createHoverProvider(index)
-    const hover = provider.provideHover!(mockModel(['\\begin{myenv}']), pos(1, 9), undefined as any)
+    const hover = getHover(provider, mockModel(['\\begin{myenv}']), 1, 9)
     expect(hover).not.toBeNull()
-    const contents = (hover as any).contents.map((c: any) => c.value)
-    expect(contents[0]).toContain('Package environment')
-    expect(contents).toHaveLength(1)
+    const values = hover!.contents.map((c) => c.value)
+    expect(values[0]).toContain('Package environment')
+    expect(values).toHaveLength(1)
   })
 })
