@@ -101,11 +101,11 @@ I0에서 Tectonic(Rust, XeTeX 기반)과 SwiftLaTeX pdfTeX WASM을 비교 평가
 * 장기적으로 WebGPU 렌더러의 입력 데이터로 사용
 * 효과: PDF.js 파싱/렌더 단계를 우회하여 즉시 화면 반영
 
-#### (4) Semantic Trace — Phase 1-2 완료 (I5a 정적 LSP + I5b 해시 테이블 스캔 + 환경/분류/로그)
+#### (4) Semantic Trace — Phase 1-3 완료 (I5a 정적 LSP + I5b 해시 테이블 스캔 + 환경/분류/로그 + 인수 추출)
 
 * **Phase 1 완료**: pdfTeX 해시 테이블 스캔 — 컴파일 후 WASM 힙에서 모든 정의된 제어 시퀀스 추출 → LSP Tier 3 자동완성
 * **Phase 2 완료**: eq_type 기반 명령어 분류 (macro/primitive/unknown), `endXXX→XXX` 환경 감지, 컴파일 로그에서 패키지 버전 파싱, hover 정보 추가
-* Phase 3 예정: 매크로 확장 시점에 구조화 이벤트 emit (label, ref, cite, section, include)
+* **Phase 3 완료**: 매크로 인수 개수 추출 (토큰 리스트 워킹) → 스니펫 자동완성 (`\frac{$1}{$2}`), hover에 인수 정보 표시
 * C 레벨 훅 또는 TeX 매크로 레벨 모두 가능
 * LSP의 "진실"을 정적 파서가 아닌 엔진 실행 트레이스로 구성
 * 효과: Overleaf+일반 에디터 조합을 넘어서는 정확한 자동완성/진단
@@ -610,11 +610,11 @@ cp dist/swiftlatexpdftex.{js,wasm} ../public/swiftlatex/
 | 패키지 명령어 자동완성 | ✅ 엔진 해시 테이블 스캔 (I5b) | 높음 |
 | 패키지 환경 자동완성 | ✅ `endXXX→XXX` 패턴 감지 (I5b Phase 2) | 높음 |
 | 명령어 분류 (macro/primitive) | ✅ eq_type 기반 (I5b Phase 2, WASM 재빌드 후 활성) | 높음 |
-| 엔진 명령어/환경 hover | ✅ Package macro / TeX primitive / Package environment | 높음 |
+| 매크로 인수 개수 + 스니펫 자동완성 | ✅ 토큰 리스트 워킹 → `\frac{$1}{$2}` (I5b Phase 3) | 높음 |
+| 엔진 명령어/환경 hover | ✅ Package macro / TeX primitive / Package environment + 인수 정보 | 높음 |
 | 패키지 버전 파싱 | ✅ 컴파일 로그에서 추출 (I5b Phase 2) | 높음 |
 | 정적 진단 (undefined ref/cite, duplicate label) | ✅ 편집+컴파일 시 실행 (I6) | 높음 |
 | 패키지 에러/경고 파싱 | ✅ `Package xxx Error/Warning` (I6) | 높음 |
-| 매크로 확장 추적 | ❌ 미구현 (I5b Phase 3) | — |
 
 ---
 
@@ -734,6 +734,60 @@ WASM 재빌드 후 확인 (CI run 22049940861):
 
 ---
 
+## Iteration 5b Phase 3 — 매크로 인수 개수 추출 + 스니펫 자동완성 ✅
+
+**사용자 가치:** 패키지 매크로가 인수 개수와 함께 스니펫으로 자동완성 — `\frac` → `\frac{$1}{$2}` (Tab으로 인수 사이 이동). Hover에 인수 개수 표시.
+
+**접근법:** pdfTeX의 토큰 리스트를 워킹하여 매크로 인수 개수를 추출. C 스캐너 확장 → 3-column 출력 → TypeScript 파싱 → 스니펫 생성 + hover 강화.
+
+<details><summary>A. C 스캐너 확장</summary>
+
+- [x] `wasm-build/trace-hook.c`: `extern memoryword *zmem` 추가 (pdfTeX 메인 메모리 배열)
+- [x] `wasm-build/trace-hook.c`: `count_macro_args(eqType, equiv)` — 토큰 리스트 워킹
+  - eq_type 111-118 (user macro)만 대상
+  - `zmem[equiv].hh.v.RH`에서 ref_count 건너뛰기
+  - `cmd 13` (match = #N 파라미터) 카운트, `cmd 14` (end_match = body 시작)에서 중단
+  - 안전 제한: 1000 반복, 최대 9 (TeX 제한)
+  - 비매크로: -1 반환
+- [x] 출력 포맷: `name\teqType` → `name\teqType\targCount` (3-column)
+
+</details>
+
+<details><summary>B. TypeScript 파싱 확장</summary>
+
+- [x] `src/lsp/project-index.ts`: `EngineCommandInfo.argCount: number` 추가
+- [x] `src/lsp/project-index.ts`: `parseEngineEntry()` — 3-column 파싱 + 2-column/bare name 하위 호환
+- [x] 단위 테스트 4개 추가 (3-column, 2-column fallback, bare name, non-macro)
+
+</details>
+
+<details><summary>C. 스니펫 자동완성</summary>
+
+- [x] `src/lsp/completion-provider.ts`: `buildArgSnippet(name, argCount)` → `"name{$1}{$2}..."`
+- [x] `src/lsp/completion-provider.ts`: `appendEngineCommands()` — `argCount > 0`이면 스니펫 모드 + `InsertAsSnippet` 규칙
+- [x] `src/lsp/completion-provider.ts`: detail 강화 — `"Package macro (2 args)"`
+- [x] `src/lsp/completion-provider.ts`: 환경 completions에도 인수 개수 표시 — `"Package environment (1 arg)"`
+- [x] 단위 테스트 2개 추가 (스니펫 생성, 환경 인수)
+
+</details>
+
+<details><summary>D. Hover 강화</summary>
+
+- [x] `src/lsp/hover-provider.ts`: `hoverCommand()` — 매크로 `argCount > 0` → "Arguments: N", `argCount == 0` → "Arguments: none"
+- [x] `src/lsp/hover-provider.ts`: `hoverEnv()` — 엔진 환경 `argCount > 0` → "Arguments: N"
+- [x] `src/lsp/__tests__/hover-provider.test.ts`: 신규 테스트 5개 (인수 표시, none, primitive 미표시, 환경 인수, 미지 인수)
+
+</details>
+
+### 하위 호환
+
+| 시나리오 | 동작 |
+|----------|------|
+| 구 WASM (2-column) + 신 TS | `argCount: -1` → 스니펫 미생성, hover 인수 미표시 (Phase 2와 동일) |
+| 신 WASM (3-column) + 신 TS | 스니펫 자동완성 + hover 인수 정보 |
+
+---
+
 ## Iteration 5c — 정적 번들 최적화 ✅
 
 **사용자 가치:** 초기 로드 전송량 대폭 감소 (gh-pages에서 체감 속도 향상)
@@ -810,11 +864,15 @@ WASM 재빌드 후 확인 (CI run 22049940861):
 
 # Part III. 로드맵 (미구현)
 
-## Iteration 5b Phase 3 — Semantic Trace (매크로 확장 트레이스)
+## ~~Iteration 5b Phase 3 — Semantic Trace (매크로 인수 추출)~~ → ✅ 완료
+
+매크로 인수 개수 추출 + 스니펫 자동완성 + hover 인수 정보. 상세는 Part II 참조.
+
+## Iteration 5b Phase 4 — Semantic Trace (매크로 확장 트레이스)
 
 **사용자 가치:** "매크로 확장도 추적, 엔진 기반 정밀 진단"
 
-**선행 완료:** Phase 1 (해시 테이블 스캔) → 패키지 명령어 자동완성. Phase 2 (환경 감지, 명령어 분류, 로그 파싱) → 패키지 환경 자동완성 + hover 정보.
+**선행 완료:** Phase 1-3 (해시 테이블 스캔 + 환경 감지 + 명령어 분류 + 인수 추출 + 스니펫).
 나머지는 pdfTeX C 코드에 semantic trace 훅을 추가하여 매크로 확장을 실시간 추적:
 
 * 매크로 확장 시점에 구조화 이벤트 emit (label, ref, cite, section, include, newcommand)
@@ -915,6 +973,7 @@ pdfTeX `ship_out()`에 PDL 출력 드라이버 추가. WebGPU로 PDL 렌더.
 | I5a | 정적 LaTeX LSP (completion, go-to-def, hover, symbols, refs) | ✅ |
 | I5b | Semantic Trace Phase 1 (해시 테이블 스캔 → 패키지 명령어 자동완성) | ✅ |
 | I5b-2 | Semantic Trace Phase 2 (환경 감지, 명령어 분류, 로그 파싱, hover) | ✅ |
+| I5b-3 | Semantic Trace Phase 3 (매크로 인수 추출 → 스니펫 자동완성 + hover 인수) | ✅ |
 | I5c(번들) | 정적 번들 최적화 (hyph 제거, pdftex.map gzip preload, onmessage 리팩터) | ✅ |
 | I5c-d | Go-to-definition 강화 (`\cite`→`\bibitem`) + 계층적 outline | ✅ |
 | I6 | 정적 진단 (undefined ref/cite, duplicate label) + 로그 파서 강화 | ✅ |
@@ -924,7 +983,7 @@ pdfTeX `ship_out()`에 PDL 출력 드라이버 추가. WebGPU로 PDL 렌더.
 | 지표 | 수치 |
 |------|------|
 | TypeScript 소스 | 36 파일, ~6,200줄 (프로덕션) |
-| 단위 테스트 | 11 파일, 199 tests |
+| 단위 테스트 | 12 파일, 208 tests |
 | E2E 테스트 | 8 스펙, ~1,070줄 |
 | WASM 빌드 | 7 파일 (Dockerfile, Makefile, build.sh, worker-template.js, wasm-entry.c, kpse-hook.c, trace-hook.c) |
 | 런타임 의존성 | 2개 (monaco-editor, pdfjs-dist) |
@@ -939,9 +998,11 @@ pdfTeX `ship_out()`에 PDL 출력 드라이버 추가. WebGPU로 PDL 렌더.
 
 ### ~~Option B-2: Semantic Trace Phase 2 (환경/분류/로그)~~ → ✅ 완료 (I5b Phase 2)
 
-### Option B-3: Semantic Trace Phase 3 (매크로 확장 트레이스)
+### ~~Option B-3: Semantic Trace Phase 3 (매크로 인수 추출)~~ → ✅ 완료
 
-해시 테이블 스캔 + 환경 감지 + 명령어 분류로 패키지 명령어/환경은 커버됨. 남은 부분:
+### Option B-4: Semantic Trace Phase 4 (매크로 확장 트레이스)
+
+해시 테이블 스캔 + 환경 감지 + 명령어 분류 + 인수 추출로 패키지 명령어/환경은 커버됨. 남은 부분:
 
 1. pdfTeX C 코드에 매크로 확장 시점 훅 (label, ref, cite, section, include 이벤트)
 2. 매크로 확장 결과 기반 정확한 진단

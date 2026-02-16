@@ -76,12 +76,48 @@ extern packedASCIIcode *strpool;  /* string character pool */
 extern poolpointer *strstart;     /* string start indices */
 extern strnumber strptr;          /* next free string number */
 extern memoryword *zeqtb;        /* eqtb array (eq_type, equiv, eq_level) */
+extern memoryword *zmem;         /* main memory array (token lists, nodes) */
 
 /* hashoffset: hash[514] is the first valid entry */
 #define HASH_OFFSET 514
 
 /* frozen_control_sequence: the "undefined CS" placeholder */
 #define FROZEN_CS 26627
+
+/* Count macro arguments by walking the parameter token list.
+ * Only valid for user macros (eq_type 111-118).
+ *
+ * Token list layout for macros:
+ *   zmem[equiv] = ref_count node
+ *   zmem[equiv].hh.v.RH = link to first parameter/body token
+ *   Each token node: .hh.v.LH = info (cmd*256 + chr), .hh.v.RH = link
+ *   cmd 13 = match (parameter #N), cmd 14 = end_match (body starts)
+ *
+ * Returns: 0-9 = argument count, -1 = not a macro or error */
+static int count_macro_args(int eqType, int equiv)
+{
+    if (eqType < 111 || eqType > 118) return -1;
+    if (equiv <= 0) return -1;
+
+    /* Skip ref_count node — first actual token is at link */
+    int q = zmem[equiv].hh.v.RH;
+    int count = 0;
+    int iters = 0;
+
+    while (q != 0 && iters < 1000) {
+        int info = zmem[q].hh.v.LH;
+        int cmd = info / 256;
+
+        if (cmd == 14) break;   /* end_match: replacement body starts */
+        if (cmd == 13) count++; /* match: parameter #N */
+
+        q = zmem[q].hh.v.RH;
+        iters++;
+    }
+
+    if (count > 9) count = 9;  /* TeX maximum is 9 parameters */
+    return count;
+}
 
 void scanHashTable(void)
 {
@@ -129,7 +165,9 @@ void scanHashTable(void)
         if (skip) continue;
         buf[len] = '\0';
 
-        fprintf(f, "%s\t%d\n", buf, (int)zeqtb[p].hh.u.B0);
+        int eqType = (int)zeqtb[p].hh.u.B0;
+        int argCount = count_macro_args(eqType, zeqtb[p].hh.v.RH);
+        fprintf(f, "%s\t%d\t%d\n", buf, eqType, argCount);
     }
 
     fclose(f);

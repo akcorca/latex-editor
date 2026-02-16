@@ -15,6 +15,7 @@ import type {
 export interface EngineCommandInfo {
   name: string
   eqType: number // -1 = unknown (old WASM), 0+ = pdfTeX eq_type
+  argCount: number // -1 = unknown/not-macro, 0-9 = argument count
   category: 'macro' | 'primitive' | 'unknown'
 }
 
@@ -33,11 +34,26 @@ function classifyEqType(eqType: number): EngineCommandInfo['category'] {
 
 function parseEngineEntry(entry: string): EngineCommandInfo {
   const tab = entry.indexOf('\t')
-  if (tab < 0) return { name: entry, eqType: -1, category: 'unknown' }
+  if (tab < 0) return { name: entry, eqType: -1, argCount: -1, category: 'unknown' }
   const name = entry.slice(0, tab)
-  const eqType = parseInt(entry.slice(tab + 1), 10)
-  if (Number.isNaN(eqType)) return { name, eqType: -1, category: 'unknown' }
-  return { name, eqType, category: classifyEqType(eqType) }
+  const rest = entry.slice(tab + 1)
+  const tab2 = rest.indexOf('\t')
+  if (tab2 < 0) {
+    // 2-column: name\teqType (backward compat with old WASM)
+    const eqType = parseInt(rest, 10)
+    if (Number.isNaN(eqType)) return { name, eqType: -1, argCount: -1, category: 'unknown' }
+    return { name, eqType, argCount: -1, category: classifyEqType(eqType) }
+  }
+  // 3-column: name\teqType\targCount
+  const eqType = parseInt(rest.slice(0, tab2), 10)
+  const argCount = parseInt(rest.slice(tab2 + 1), 10)
+  if (Number.isNaN(eqType)) return { name, eqType: -1, argCount: -1, category: 'unknown' }
+  return {
+    name,
+    eqType,
+    argCount: Number.isNaN(argCount) ? -1 : argCount,
+    category: classifyEqType(eqType),
+  }
 }
 
 function detectEnvironments(names: Set<string>): Set<string> {

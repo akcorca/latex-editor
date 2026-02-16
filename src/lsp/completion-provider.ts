@@ -97,6 +97,25 @@ function completeCommands(prefix: string, range: IRange, index: ProjectIndex): C
   return suggestions
 }
 
+function formatArgSuffix(argCount: number): string {
+  if (argCount <= 0) return ''
+  return ` (${argCount} arg${argCount !== 1 ? 's' : ''})`
+}
+
+function engineCommandDetail(category: string, argCount: number): string {
+  if (category === 'macro') return `Package macro${formatArgSuffix(argCount)}`
+  if (category === 'primitive') return 'TeX primitive'
+  return 'Package command'
+}
+
+function buildArgSnippet(name: string, argCount: number): string {
+  let snippet = name
+  for (let i = 1; i <= argCount; i++) {
+    snippet += `{\$${i}}`
+  }
+  return snippet
+}
+
 /** Tier 3: Engine-traced commands (from pdfTeX hash table scan) */
 function appendEngineCommands(
   suggestions: CompletionItem[],
@@ -107,20 +126,20 @@ function appendEngineCommands(
   const seen = new Set(suggestions.map((s) => (s.label as string).slice(1)))
   for (const [name, info] of index.getEngineCommands()) {
     if (!name.startsWith(prefix) || seen.has(name)) continue
-    const detail =
-      info.category === 'macro'
-        ? 'Package macro'
-        : info.category === 'primitive'
-          ? 'TeX primitive'
-          : 'Package command'
-    suggestions.push({
+    const hasArgs = info.argCount > 0
+    const detail = engineCommandDetail(info.category, info.argCount)
+    const item: CompletionItem = {
       label: `\\${name}`,
       kind: info.category === 'primitive' ? CompletionItemKind.Keyword : CompletionItemKind.Text,
-      insertText: name,
+      insertText: hasArgs ? buildArgSnippet(name, info.argCount) : name,
       detail,
       range,
       sortText: `2_${name}`,
-    })
+    }
+    if (hasArgs) {
+      item.insertTextRules = CompletionItemInsertTextRule.InsertAsSnippet
+    }
+    suggestions.push(item)
   }
 }
 
@@ -206,19 +225,31 @@ function completeEnvironments(
       sortText: `1_${name}`,
     })
   }
-  // Tier 2: Engine-detected environments (from endXXX pattern)
+  appendEngineEnvironments(suggestions, prefix, range, seen, index)
+  return suggestions
+}
+
+/** Tier 2: Engine-detected environments (from endXXX pattern) */
+function appendEngineEnvironments(
+  suggestions: CompletionItem[],
+  prefix: string,
+  range: IRange,
+  seen: Set<string>,
+  index: ProjectIndex,
+): void {
   for (const name of index.getEngineEnvironments()) {
     if (!name.startsWith(prefix) || seen.has(name)) continue
+    const envInfo = index.getEngineCommands().get(name)
+    const argCount = envInfo?.argCount ?? -1
     suggestions.push({
       label: name,
       kind: CompletionItemKind.Module,
       insertText: name,
-      detail: 'Package environment',
+      detail: `Package environment${formatArgSuffix(argCount)}`,
       range,
       sortText: `2_${name}`,
     })
   }
-  return suggestions
 }
 
 function completePackages(prefix: string, range: IRange): CompletionItem[] {

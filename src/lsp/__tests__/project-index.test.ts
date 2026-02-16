@@ -146,15 +146,35 @@ describe('ProjectIndex', () => {
     const cmds = index.getEngineCommands()
     expect(cmds.size).toBe(3)
     expect(cmds.get('align')!.eqType).toBe(-1)
+    expect(cmds.get('align')!.argCount).toBe(-1)
     expect(cmds.get('align')!.category).toBe('unknown')
   })
 
-  it('parses tab-separated name\\teqType format', () => {
+  it('parses tab-separated name\\teqType format (2-column)', () => {
     const index = new ProjectIndex()
     index.updateEngineCommands(['align\t113', 'hbox\t21'])
     expect(index.getEngineCommands().get('align')!.eqType).toBe(113)
+    expect(index.getEngineCommands().get('align')!.argCount).toBe(-1)
     expect(index.getEngineCommands().get('align')!.category).toBe('macro')
     expect(index.getEngineCommands().get('hbox')!.eqType).toBe(21)
+    expect(index.getEngineCommands().get('hbox')!.category).toBe('primitive')
+  })
+
+  it('parses 3-column name\\teqType\\targCount format', () => {
+    const index = new ProjectIndex()
+    index.updateEngineCommands(['frac\t113\t2', 'textbf\t113\t1', 'relax\t0\t-1'])
+    const cmds = index.getEngineCommands()
+    expect(cmds.get('frac')!.eqType).toBe(113)
+    expect(cmds.get('frac')!.argCount).toBe(2)
+    expect(cmds.get('frac')!.category).toBe('macro')
+    expect(cmds.get('textbf')!.argCount).toBe(1)
+    expect(cmds.get('relax')!.argCount).toBe(-1)
+  })
+
+  it('handles non-macro argCount as -1', () => {
+    const index = new ProjectIndex()
+    index.updateEngineCommands(['hbox\t21\t-1'])
+    expect(index.getEngineCommands().get('hbox')!.argCount).toBe(-1)
     expect(index.getEngineCommands().get('hbox')!.category).toBe('primitive')
   })
 

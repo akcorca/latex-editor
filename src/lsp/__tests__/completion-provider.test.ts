@@ -195,7 +195,7 @@ describe('createCompletionProvider', () => {
   })
 
   it('shows categorized engine commands', () => {
-    index.updateEngineCommands(['mymacro\t113', 'hbox\t21', 'oldcmd'])
+    index.updateEngineCommands(['mymacro\t113\t0', 'hbox\t21\t-1', 'oldcmd'])
     const model = mockModel(['\\'])
     const result = provider.provideCompletionItems(
       model,
@@ -210,6 +210,52 @@ describe('createCompletionProvider', () => {
     expect(macro?.detail).toBe('Package macro')
     expect(prim?.detail).toBe('TeX primitive')
     expect(unknown?.detail).toBe('Package command')
+  })
+
+  it('generates snippet completions for macros with args', () => {
+    index.updateEngineCommands(['myfrac\t113\t2', 'mysqrt\t113\t1', 'mypar\t113\t0'])
+    const model = mockModel(['\\my'])
+    const result = provider.provideCompletionItems(
+      model,
+      pos(1, 4),
+      undefined as any,
+      undefined as any,
+    )
+    const suggestions = (result as any).suggestions as any[]
+    const frac = suggestions.find((s: any) => s.label === '\\myfrac')
+    expect(frac).toBeDefined()
+    expect(frac.insertText).toBe('myfrac{$1}{$2}')
+    expect(frac.insertTextRules).toBe(4) // InsertAsSnippet
+    expect(frac.detail).toBe('Package macro (2 args)')
+
+    const sqrt = suggestions.find((s: any) => s.label === '\\mysqrt')
+    expect(sqrt).toBeDefined()
+    expect(sqrt.insertText).toBe('mysqrt{$1}')
+    expect(sqrt.insertTextRules).toBe(4)
+    expect(sqrt.detail).toBe('Package macro (1 arg)')
+
+    const par = suggestions.find((s: any) => s.label === '\\mypar')
+    expect(par).toBeDefined()
+    expect(par.insertText).toBe('mypar')
+    expect(par.insertTextRules).toBeUndefined()
+    expect(par.detail).toBe('Package macro')
+  })
+
+  it('shows arg count in engine environment detail', () => {
+    index.updateEngineCommands(['mytab\t113\t1', 'endmytab\t113\t0'])
+    const model = mockModel(['\\begin{my'])
+    const result = provider.provideCompletionItems(
+      model,
+      pos(1, 10),
+      undefined as any,
+      undefined as any,
+    )
+    const suggestions = (result as any).suggestions as any[]
+    const mytab = suggestions.find(
+      (s: any) => s.label === 'mytab' && s.detail?.includes('Package environment'),
+    )
+    expect(mytab).toBeDefined()
+    expect(mytab.detail).toBe('Package environment (1 arg)')
   })
 
   it('provides engine environment completions in \\begin{', () => {

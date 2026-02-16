@@ -1,9 +1,21 @@
 import * as monaco from 'monaco-editor'
 import { getCommandByName, getEnvironmentByName } from './latex-commands'
 import { CITE_CMDS, findMatchAtCol, REF_CMDS } from './latex-patterns'
-import type { ProjectIndex } from './project-index'
+import type { EngineCommandInfo, ProjectIndex } from './project-index'
 
 type Hover = monaco.languages.Hover
+
+function engineCategoryLabel(category: EngineCommandInfo['category']): string {
+  if (category === 'macro') return 'Package macro'
+  if (category === 'primitive') return 'TeX primitive'
+  return 'Package command'
+}
+
+function appendArgInfo(contents: string[], info: EngineCommandInfo): void {
+  if (info.category !== 'macro') return
+  if (info.argCount > 0) contents.push(`Arguments: ${info.argCount}`)
+  else if (info.argCount === 0) contents.push('Arguments: none')
+}
 
 function makeHover(contents: string[], lineNum: number, start: number, end: number): Hover {
   return {
@@ -23,7 +35,12 @@ function hoverEnv(m: RegExpMatchArray, lineNum: number, index: ProjectIndex): Ho
     return makeHover(contents, lineNum, start, start + m[0].length)
   }
   if (index.getEngineEnvironments().has(envName)) {
-    return makeHover([`**${envName}** — Package environment`], lineNum, start, start + m[0].length)
+    const info = index.getEngineCommands().get(envName)
+    const contents = [`**${envName}** — Package environment`]
+    if (info && info.argCount > 0) {
+      contents.push(`Arguments: ${info.argCount}`)
+    }
+    return makeHover(contents, lineNum, start, start + m[0].length)
   }
   return makeHover([`**${envName}** environment`], lineNum, start, start + m[0].length)
 }
@@ -84,13 +101,9 @@ function hoverCommand(m: RegExpMatchArray, lineNum: number, index: ProjectIndex)
   }
   const engineCmd = index.getEngineCommands().get(name)
   if (engineCmd) {
-    const label =
-      engineCmd.category === 'macro'
-        ? 'Package macro'
-        : engineCmd.category === 'primitive'
-          ? 'TeX primitive'
-          : 'Package command'
-    return makeHover([`**\\${name}** — ${label}`], lineNum, start, end)
+    const contents = [`**\\${name}** — ${engineCategoryLabel(engineCmd.category)}`]
+    appendArgInfo(contents, engineCmd)
+    return makeHover(contents, lineNum, start, end)
   }
   return null
 }
