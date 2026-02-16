@@ -11,7 +11,17 @@ export interface SwiftLatexEngineOptions {
 /** Counter for unique message IDs. */
 let nextMsgId = 1
 
-/** Worker response message shape (untyped — worker uses plain objects). */
+/** Outgoing messages to the WASM worker. */
+type WorkerOutMessage =
+  | { cmd: 'compilelatex' }
+  | { cmd: 'readfile'; url: string }
+  | { cmd: 'loadformat'; data: ArrayBuffer }
+  | { cmd: 'preloadtexlive'; format: number; filename: string; data: ArrayBuffer; msgId: string }
+  | { cmd: 'settexliveurl'; url: string }
+  | { cmd: 'writefile'; url: string; src: string | Uint8Array }
+  | { cmd: 'setmainfile'; url: string }
+
+/** Incoming response message from the WASM worker. */
 interface WorkerMessage {
   result?: string
   cmd?: string
@@ -25,7 +35,6 @@ interface WorkerMessage {
   engineCommands?: string[]
   inputFiles?: string[]
   semanticTrace?: string
-  [key: string]: unknown
 }
 
 export class SwiftLatexEngine {
@@ -194,7 +203,7 @@ export class SwiftLatexEngine {
 
   /** Send a message to the worker and wait for a response keyed by responseKey. */
   private postMessageWithResponse(
-    msg: Record<string, unknown>,
+    msg: WorkerOutMessage,
     responseKey: string,
     transferables?: Transferable[],
   ): Promise<WorkerMessage> {
@@ -228,10 +237,10 @@ export class SwiftLatexEngine {
 
     this.status = 'ready'
     const compileTime = performance.now() - start
-    const log: string = data.log || ''
+    const log = data.log || ''
     const success = data.result === 'ok'
-    const pdf = success ? new Uint8Array(data.pdf as ArrayBuffer) : null
-    const synctex = success && data.synctex ? new Uint8Array(data.synctex as ArrayBuffer) : null
+    const pdf = success && data.pdf ? new Uint8Array(data.pdf) : null
+    const synctex = success && data.synctex ? new Uint8Array(data.synctex) : null
     const errors = parseTexErrors(log)
     const preambleSnapshot = !!data.preambleSnapshot
 
@@ -251,7 +260,7 @@ export class SwiftLatexEngine {
       result.inputFiles = data.inputFiles
     }
     if (data.semanticTrace) {
-      result.semanticTrace = data.semanticTrace as string
+      result.semanticTrace = data.semanticTrace
     }
     return result
   }
@@ -261,7 +270,7 @@ export class SwiftLatexEngine {
 
     const data = await this.postMessageWithResponse({ cmd: 'readfile', url: path }, 'cmd:readfile')
 
-    return data.result === 'ok' ? (data.data as string) : null
+    return data.result === 'ok' ? (data.data ?? null) : null
   }
 
   isReady(): boolean {
