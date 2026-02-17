@@ -143,6 +143,7 @@ export class LatexEditor {
 
   // --- File management ---
 
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: file loop with type/extension dispatch
   loadProject(files: Record<string, string | Uint8Array>): void {
     const oldPaths = new Set(this.models.keys())
     const newPaths = new Set(Object.keys(files))
@@ -156,7 +157,9 @@ export class LatexEditor {
     for (const [path, content] of Object.entries(files)) {
       this.fs.writeFile(path, content)
       if (typeof content === 'string') {
-        this.projectIndex.updateFile(path, content)
+        if (path.endsWith('.tex')) {
+          this.projectIndex.updateFile(path, content)
+        }
         const existing = this.models.get(path)
         if (existing) {
           existing.setValue(content)
@@ -388,12 +391,14 @@ export class LatexEditor {
       { minDebounceMs: 50, maxDebounceMs: 1000 },
     )
 
-    // Create models for all text files and index them
+    // Create models for all text files and index .tex files
     for (const path of this.fs.listFiles()) {
       const file = this.fs.getFile(path)
       if (file && typeof file.content === 'string') {
         this.ensureModel(path, file.content)
-        this.projectIndex.updateFile(path, file.content)
+        if (path.endsWith('.tex')) {
+          this.projectIndex.updateFile(path, file.content)
+        }
       }
     }
     this.updateBibIndex()
@@ -535,7 +540,9 @@ export class LatexEditor {
     perf.mark('debounce')
     this.bibtexDone = false
     this.fs.writeFile(this.currentFile, content)
-    this.projectIndex.updateFile(this.currentFile, content)
+    if (this.currentFile.endsWith('.tex')) {
+      this.projectIndex.updateFile(this.currentFile, content)
+    }
     if (this.currentFile.endsWith('.bib')) {
       this.updateBibIndex()
     }
@@ -545,22 +552,27 @@ export class LatexEditor {
   }
 
   private onFileSelect(path: string): void {
+    // Ignore files that don't exist in VFS (e.g. main.bbl from SyncTeX inverse search)
+    const target = this.fs.getFile(path)
+    if (!target) return
+
     // Save current editor content if we were editing text (not previewing binary)
     const wasPreviewingBinary = this.previewEl && this.previewEl.style.display !== 'none'
     if (this.editor && !wasPreviewingBinary) {
       const value = this.editor.getValue()
       this.fs.writeFile(this.currentFile, value)
-      this.projectIndex.updateFile(this.currentFile, value)
+      if (this.currentFile.endsWith('.tex')) {
+        this.projectIndex.updateFile(this.currentFile, value)
+      }
     }
 
     this.currentFile = path
     this.lastForwardLine = -1
     this.lastForwardFile = ''
 
-    const file = this.fs.getFile(path)
-    if (file && file.content instanceof Uint8Array) {
+    if (target.content instanceof Uint8Array) {
       // Binary file — show preview instead of Monaco
-      this.showBinaryPreview(path, file.content)
+      this.showBinaryPreview(path, target.content)
       this.fileTree.setActive(path)
       return
     }
@@ -569,8 +581,8 @@ export class LatexEditor {
     this.hideBinaryPreview()
 
     // Ensure model exists (file may have been added externally)
-    if (file && typeof file.content === 'string' && !this.models.has(path)) {
-      this.ensureModel(path, file.content)
+    if (typeof target.content === 'string' && !this.models.has(path)) {
+      this.ensureModel(path, target.content)
     }
 
     const model = this.models.get(path)
