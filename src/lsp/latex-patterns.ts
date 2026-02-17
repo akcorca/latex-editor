@@ -19,8 +19,10 @@ export function findMatchAtCol(line: string, re: RegExp, col: number): RegExpMat
 
 /** Convert a SourceLocation to a Monaco Location (uri + range) */
 export function sourceLocationToMonaco(loc: SourceLocation): monaco.languages.Location {
+  const path = loc.file.startsWith('/') ? loc.file : `/${loc.file}`
+  const uri = monaco.Uri.file(path)
   return {
-    uri: monaco.Uri.file(loc.file),
+    uri,
     range: new monaco.Range(loc.line, loc.column, loc.line, loc.column),
   }
 }

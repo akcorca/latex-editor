@@ -351,7 +351,7 @@ export class PdfViewer {
 
   /** Forward search: highlight a source location in the PDF */
   forwardSearch(file: string, line: number): void {
-    let loc = this.synctexData
+    const loc = this.synctexData
       ? this.synctexParser.forwardLookup(this.synctexData, file, line)
       : this.textMapper.forwardLookup(file, line)
     if (!loc) return

@@ -111,7 +111,7 @@ function engineCommandDetail(category: string, argCount: number): string {
 function buildArgSnippet(name: string, argCount: number): string {
   let snippet = name
   for (let i = 1; i <= argCount; i++) {
-    snippet += `{\$${i}}`
+    snippet += `{$${i}}`
   }
   return snippet
 }

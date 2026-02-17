@@ -1,4 +1,5 @@
 import * as monaco from 'monaco-editor'
+import { bibLanguage, bibLanguageConfig } from './bib-language'
 import { latexLanguage, latexLanguageConfig } from './latex-language'
 
 let monacoConfigured = false
@@ -26,13 +27,23 @@ function ensureMonacoConfigured(): void {
   monaco.languages.register({ id: 'latex' })
   monaco.languages.setMonarchTokensProvider('latex', latexLanguage)
   monaco.languages.setLanguageConfiguration('latex', latexLanguageConfig)
+
+  // Register BibTeX language
+  monaco.languages.register({ id: 'bibtex' })
+  monaco.languages.setMonarchTokensProvider('bibtex', bibLanguage)
+  monaco.languages.setLanguageConfiguration('bibtex', bibLanguageConfig)
 }
 
 /** Create a Monaco text model for a project file. */
 export function createFileModel(content: string, filePath: string): monaco.editor.ITextModel {
   ensureMonacoConfigured()
-  const lang = filePath.endsWith('.tex') ? 'latex' : 'plaintext'
-  const uri = monaco.Uri.file(filePath)
+  const lang = filePath.endsWith('.tex')
+    ? 'latex'
+    : filePath.endsWith('.bib')
+      ? 'bibtex'
+      : 'plaintext'
+  const path = filePath.startsWith('/') ? filePath : `/${filePath}`
+  const uri = monaco.Uri.file(path)
   return monaco.editor.createModel(content, lang, uri)
 }
 

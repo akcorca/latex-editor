@@ -32,10 +32,15 @@ export class Uri {
   readonly path: string
   constructor(scheme: string, path: string) {
     this.scheme = scheme
-    this.path = path
+    this.path = path.startsWith('/') ? path : `/${path}`
   }
   static file(path: string): Uri {
-    return new Uri('file', `/${path}`)
+    return new Uri('file', path)
+  }
+  static parse(url: string): Uri {
+    const scheme = url.split('://')[0]!
+    const path = url.split('://')[1]!
+    return new Uri(scheme, path)
   }
 }
 

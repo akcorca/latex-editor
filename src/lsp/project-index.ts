@@ -102,6 +102,10 @@ export class ProjectIndex {
     return [...this.files.keys()]
   }
 
+  hasFile(filePath: string): boolean {
+    return this.files.has(filePath)
+  }
+
   getAllLabels(): LabelDef[] {
     return [...this.files.values()].flatMap((s) => s.labels)
   }

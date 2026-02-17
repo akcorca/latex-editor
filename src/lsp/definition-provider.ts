@@ -1,4 +1,4 @@
-import * as monaco from 'monaco-editor'
+import type * as monaco from 'monaco-editor'
 import { INPUT_CMDS, REF_CMDS, sourceLocationToMonaco } from './latex-patterns'
 import type { ProjectIndex } from './project-index'
 
@@ -27,7 +27,7 @@ function findCloseBrace(line: string, braceStart: number): number {
       if (depth === 0) return i
     }
   }
-  return braceStart
+  return line.length
 }
 
 /** Try to find a \cmd{arg} token where the cursor is inside the braces */
@@ -36,7 +36,7 @@ function getTokenInBraces(line: string, col: number): { command: string; arg: st
   if (braceStart < 0) return null
 
   const before = line.slice(0, braceStart)
-  const cmdMatch = before.match(/\\(\w+)(?:\[.*?\])?\s*$/)
+  const cmdMatch = before.match(/\\([a-zA-Z@]+)(?:\[.*?\])?\s*$/)
   if (!cmdMatch) return null
 
   const braceEnd = findCloseBrace(line, braceStart)
@@ -50,20 +50,22 @@ const ARG_CMD_RE = new RegExp(
 
 /** Try to find a \command token where the cursor is on the command word */
 function getTokenOnCommand(line: string, col: number): Token | null {
-  const wordMatch = line.slice(0, col + 20).match(/\\(\w+)/)
-  if (!wordMatch || wordMatch.index === undefined) return null
-  const start = wordMatch.index
-  const end = start + wordMatch[0].length
-  if (col < start || col > end) return null
-
-  const command = wordMatch[1]!
-  // For ref/cite/input commands, also grab the brace argument that follows
-  if (ARG_CMD_RE.test(command)) {
-    const after = line.slice(end)
-    const braceMatch = after.match(/^(?:\[.*?\])?\{([^}]*)\}/)
-    if (braceMatch) return { command, arg: braceMatch[1]! }
+  const matches = line.matchAll(/\\[a-zA-Z@]+/g)
+  for (const match of matches) {
+    const start = match.index!
+    const end = start + match[0].length
+    if (col >= start && col <= end) {
+      const command = match[0].slice(1) // remove backslash
+      // For ref/cite/input commands, also grab the brace argument that follows
+      if (ARG_CMD_RE.test(command)) {
+        const after = line.slice(end)
+        const braceMatch = after.match(/^\s*(?:\[.*?\])?\s*\{([^}]*)\}/)
+        if (braceMatch) return { command, arg: braceMatch[1]! }
+      }
+      return { command }
+    }
   }
-  return { command }
+  return null
 }
 
 /** Extract the token at the cursor position: returns { command, arg } or null */
@@ -79,33 +81,68 @@ function getTokenAtPosition(
 const REF_CMD_RE = new RegExp(`^(?:${REF_CMDS})$`)
 const INPUT_CMD_RE = new RegExp(`^(?:${INPUT_CMDS})$`)
 
+function resolveInput(
+  arg: string,
+  index: ProjectIndex,
+  model: monaco.editor.ITextModel,
+): monaco.languages.Definition | null {
+  const candidates = [arg]
+  if (!arg.endsWith('.tex')) {
+    candidates.push(`${arg}.tex`)
+  }
+
+  // 1. Try resolving relative to project root
+  for (const cand of candidates) {
+    if (index.hasFile(cand)) {
+      return sourceLocationToMonaco({ file: cand, line: 1, column: 1 })
+    }
+  }
+
+  // 2. Try resolving relative to current file's directory
+  const currentPath = model.uri.path.replace(/^\//, '') // Remove leading '/'
+  const lastSlash = currentPath.lastIndexOf('/')
+  if (lastSlash >= 0) {
+    const currentDir = currentPath.slice(0, lastSlash + 1)
+    for (const cand of candidates) {
+      const relPath = currentDir + cand
+      if (index.hasFile(relPath)) {
+        return sourceLocationToMonaco({ file: relPath, line: 1, column: 1 })
+      }
+    }
+  }
+
+  // Fallback: return the first likely candidate
+  return sourceLocationToMonaco({
+    file: candidates[candidates.length - 1]!,
+    line: 1,
+    column: 1,
+  })
+}
+
 function handleArgToken(
   command: string,
   arg: string,
   index: ProjectIndex,
+  model: monaco.editor.ITextModel,
 ): monaco.languages.Definition | null {
+  const trimmedArg = arg.trim()
   // \ref{name} or \eqref{name} -> jump to \label{name}
   if (REF_CMD_RE.test(command)) {
-    const label = index.findLabelDef(arg)
+    const label = index.findLabelDef(trimmedArg)
     if (label) return sourceLocationToMonaco(label.location)
     return null
   }
 
   // \cite{key} -> jump to \bibitem{key}
   if (CITE_CMD_RE.test(command)) {
-    const bibitem = index.findBibitemDef(arg)
+    const bibitem = index.findBibitemDef(trimmedArg)
     if (bibitem) return sourceLocationToMonaco(bibitem.location)
     return null
   }
 
   // \input{file} or \include{file} -> jump to file line 1
   if (INPUT_CMD_RE.test(command)) {
-    let filePath = arg
-    if (!filePath.includes('.')) filePath += '.tex'
-    return {
-      uri: monaco.Uri.file(filePath),
-      range: new monaco.Range(1, 1, 1, 1),
-    }
+    return resolveInput(trimmedArg, index, model)
   }
 
   return null
@@ -130,7 +167,7 @@ export function createDefinitionProvider(index: ProjectIndex): monaco.languages.
       if (!token) return null
 
       if ('arg' in token) {
-        return handleArgToken(token.command, token.arg, index)
+        return handleArgToken(token.command, token.arg, index, model)
       }
       return handleCommandToken(token.command, index)
     },

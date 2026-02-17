@@ -406,6 +406,28 @@ export class LatexEditor {
     const editorContainer = this.root.querySelector<HTMLElement>('.le-editor')!
     this.editor = createEditor(editorContainer, this.models.get(this.currentFile)!)
 
+    // Support cross-file navigation (Goto Definition)
+    const editorService = (this.editor as any)._codeEditorService
+    const originalOpenCodeEditor = editorService.openCodeEditor.bind(editorService)
+    editorService.openCodeEditor = async (input: any, source: any, sideBySide: any) => {
+      const result = await originalOpenCodeEditor(input, source, sideBySide)
+      if (!result && input.resource) {
+        const uri = input.resource.toString()
+        for (const [path, model] of this.models.entries()) {
+          if (model.uri.toString() === uri) {
+            this.onFileSelect(path)
+            if (input.options?.selection) {
+              const range = input.options.selection
+              this.editor.setSelection(range)
+              this.editor.revealRangeInCenter(range)
+            }
+            return true
+          }
+        }
+      }
+      return result
+    }
+
     // Binary file preview overlay
     this.previewEl = document.createElement('div')
     this.previewEl.className = 'binary-preview'
@@ -415,6 +437,24 @@ export class LatexEditor {
     // Single change handler — works across all model switches
     this.editorChangeDisposable = this.editor.onDidChangeModelContent(() => {
       this.onEditorChange(this.editor.getValue())
+    })
+
+    // Sync state when model changes (e.g. Goto Definition)
+    this.editor.onDidChangeModel(() => {
+      const model = this.editor.getModel()
+      if (this.switchingModel) return
+      if (!model) return
+
+      for (const [path, m] of this.models.entries()) {
+        if (m === model) {
+          if (this.currentFile !== path) {
+            this.currentFile = path
+            this.fileTree.setActive(path)
+            this.runDiagnostics()
+          }
+          break
+        }
+      }
     })
 
     // File Tree
