@@ -3,6 +3,7 @@ dist/
 bin/
 
 *.log
+.env.local
 
 # Playwright
 test-results/

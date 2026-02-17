@@ -3,27 +3,30 @@
 ## Quick Start
 
 ```bash
+npm run download-engine   # first time only
 npm run dev
-# App: http://localhost:5555
+# App: http://localhost:5173
 ```
 
-No Docker required. TeX packages are fetched on demand from CloudFront CDN.
+TeX packages are fetched on demand from CloudFront CDN via Vite proxy (configured in `.env`, override with `.env.local`).
 
 ## Prerequisites
 
-- Node.js (see `.nvmrc`)
-- WASM engine files in `public/swiftlatex/` (see Engine Setup below)
+- Node.js (v24+)
+- WASM engine files in `public/swiftlatex/` (`npm run download-engine`)
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `npm run dev` | Vite dev server (hot reload) |
-| `npm run build` | Type check + production build |
-| `npm run check` | TypeScript type check only |
+| `npm run dev` | Vite dev server (hot reload, port 5173) |
+| `npm run build` | Type check (`tsgo`) + production build |
+| `npm run build:lib` | Library build (ES module) |
+| `npm run preview` | Preview production build |
+| `npm run check` | TypeScript type check only (`tsgo --noEmit`) |
 | `npm run test` | Unit tests (vitest, single run) |
 | `npm run test:watch` | Unit tests in watch mode |
-| `npm run test:e2e` | E2E tests (Playwright, requires Docker) |
+| `npm run test:e2e` | E2E tests (Playwright, requires `docker compose up`) |
 | `npm run lint` | Lint check (Biome) |
 | `npm run lint:fix` | Auto-fix lint issues |
 | `npm run format` | Format code (Biome) |
@@ -56,16 +59,16 @@ src/
 ├── fs/               # Virtual filesystem
 ├── ui/               # File tree, error log, layout, error markers
 ├── perf/             # Performance metrics + debug overlay
+├── index.ts          # Library entry point
 ├── latex-editor.ts   # Component API (LatexEditor class)
 ├── main.ts           # Standalone app entry point
 └── types.ts          # Shared types
 
 public/swiftlatex/    # WASM engine files (not in git)
 wasm-build/           # pdfTeX WASM build pipeline (Docker)
-scripts/              # Helper scripts
+scripts/              # sync-texlive-s3.sh, download-engine.sh, etc.
 e2e/                  # Playwright E2E tests
 docs/                 # Documentation
-scripts/              # sync-texlive-s3.sh, download-engine.sh, etc.
 ```
 
 ## Engine Setup
@@ -91,28 +94,15 @@ cp dist/swiftlatexpdftex.js dist/swiftlatexpdftex.wasm ../public/swiftlatex/
 
 <details><summary>Build time expectations</summary>
 
-The WASM build is a two-phase process and is **extremely slow** on ARM Macs (Apple Silicon) because it runs x86_64 emulation via QEMU/Rosetta.
+Two-phase build, **extremely slow** on ARM Macs (QEMU x86_64 emulation).
 
 | Phase | ARM Mac (QEMU) | x86_64 Linux |
 |-------|---------------|--------------|
-| Docker image build | ~15 min (first), ~1 min (cached) | ~5 min (first) |
-| Phase 1: Native configure | ~10–15 min | ~2 min |
-| Phase 1: Native compile (libs + web2c) | ~30–60 min | ~5–10 min |
-| Phase 2: WASM configure (emconfigure) | ~10–15 min | ~2 min |
-| Phase 2: WASM compile (emmake + emcc) | ~20–40 min | ~5–10 min |
+| Phase 1: Native compile | ~40–75 min | ~7–12 min |
+| Phase 2: WASM compile | ~30–55 min | ~7–12 min |
 | **Total** | **~1.5–2.5 hours** | **~15–30 min** |
 
-The bottleneck is `libs/icu/` (ICU C++ library, ~200 source files) and `texk/web2c/` (pdfTeX C generation via tangle). On ARM Mac the Docker container runs under QEMU emulation for x86_64 which makes everything ~5–10x slower.
-
-**Recommendation**: If possible, run the WASM build on an x86_64 Linux machine or CI server.
-
-**Build phases:**
-
-1. **Phase 1 — Native build**: Compiles TeX Live natively to generate pdfTeX C source files (`pdftex0.c`, `pdftexini.c`, etc.) using the `tangle` tool. These tools can only run natively, not under Emscripten.
-
-2. **Phase 2 — WASM build**: Configures TeX Live through `emconfigure`, copies the natively-generated C files, then compiles everything with `emcc` to produce the `.wasm` + `.js` output.
-
-The full build may show errors for luajittex (missing `hb.h`) — this is expected and ignored. Only pdfTeX is needed.
+Recommendation: run on x86_64 Linux or CI.
 
 </details>
 
@@ -120,151 +110,59 @@ The full build may show errors for luajittex (missing `hb.h`) — this is expect
 
 The WASM worker fetches LaTeX packages on demand during compilation via synchronous XHR.
 
-### How it works (S3 + CloudFront)
-
-All packages are served from S3 via CloudFront. This is used for **both development and production** — no local server needed.
+All packages are served from S3 via CloudFront:
 
 | Resource | Value |
 |----------|-------|
 | S3 bucket | `akcorca-texlive` (ap-northeast-2) |
-| CloudFront | `dwrg2en9emzif.cloudfront.net` (distribution `EZLBEEMI7TKVN`) |
+| CloudFront | `dwrg2en9emzif.cloudfront.net` |
 | Files | ~120,000 files, ~1.7 GB |
-| CORS | `Access-Control-Allow-Origin: *`, exposes `fileid`/`pkid` headers |
 
-The URL is configured via:
-- **`npm run dev`**: defaults to `${location.origin}${BASE_URL}texlive/`, which proxies to CloudFront via Vite config, or set `VITE_TEXLIVE_URL`
-- **Production build**: `VITE_TEXLIVE_URL=https://dwrg2en9emzif.cloudfront.net/` (set in CI)
-- **Embedding API**: `new LatexEditor({ texliveUrl: 'https://dwrg2en9emzif.cloudfront.net/' })`
+### URL resolution
 
-#### URL structure
+The engine resolves the texlive URL in this order:
+
+1. `texliveUrl` option passed to `SwiftLatexEngine` / `LatexEditor`
+2. `VITE_TEXLIVE_URL` env var (baked into client at build time)
+3. `${location.origin}${BASE_URL}texlive/` (Vite proxy → `TEXLIVE_URL` from `.env`)
+
+### URL structure
 
 The worker requests files as `{texliveUrl}pdftex/{format}/{filename}`:
 
 | Format | Content | Example |
 |--------|---------|---------|
-| 3 | TFM font metrics (no extension) | `pdftex/3/cmr10` |
+| 3 | TFM font metrics | `pdftex/3/cmr10` |
 | 10 | Format files | `pdftex/10/swiftlatexpdftex.fmt` |
 | 11 | Font maps | `pdftex/11/pdftex.map` |
-| 26 | TeX sources (.sty, .cls, .def, ...) | `pdftex/26/geometry.sty` |
+| 26 | TeX sources (.sty, .cls, .def) | `pdftex/26/geometry.sty` |
 | 32 | PostScript fonts (.pfb) | `pdftex/32/cmr10.pfb` |
-| 33 | Virtual fonts (no extension) | `pdftex/33/cmr10` |
+| 33 | Virtual fonts | `pdftex/33/cmr10` |
 | 44 | Encoding files (.enc) | `pdftex/44/cm-super-ts1.enc` |
 
 Missing files must return 404 (not 403). The worker caches both hits and misses in memory.
 
 ### Rebuilding the S3 content
 
-No Docker required. The script downloads the TeX Live 2020 texmf tarball (~2.9 GB) directly from the CTAN historic archive, extracts files into a flat structure, and uploads to S3.
-
 ```bash
-# Extract only (inspect before uploading)
-./scripts/sync-texlive-s3.sh
-
-# Extract + upload to S3
-./scripts/sync-texlive-s3.sh --upload
-
-# Use an existing local TeX Live installation instead of downloading
-TEXMF_DIST=/usr/local/texlive/2020/texmf-dist ./scripts/sync-texlive-s3.sh
+./scripts/sync-texlive-s3.sh            # extract only
+./scripts/sync-texlive-s3.sh --upload   # extract + upload to S3
 ```
 
-The script caches the downloaded tarball in `/tmp/texlive-s3/` — subsequent runs skip the download.
-
-<details><summary>Setting up a new S3 + CloudFront deployment from scratch</summary>
-
-```bash
-BUCKET=akcorca-texlive
-REGION=ap-northeast-2
-
-# Create bucket
-aws s3 mb s3://$BUCKET --region $REGION
-
-# Allow public access
-aws s3api put-public-access-block --bucket $BUCKET \
-  --public-access-block-configuration \
-  BlockPublicAcls=false,IgnorePublicAcls=false,BlockPublicPolicy=false,RestrictPublicBuckets=false
-
-aws s3api put-bucket-policy --bucket $BUCKET --policy "{
-  \"Version\": \"2012-10-17\",
-  \"Statement\": [{
-    \"Sid\": \"PublicReadGetObject\",
-    \"Effect\": \"Allow\",
-    \"Principal\": \"*\",
-    \"Action\": \"s3:GetObject\",
-    \"Resource\": \"arn:aws:s3:::$BUCKET/*\"
-  }]
-}"
-
-# Enable static website hosting (returns 404 instead of 403 for missing files)
-aws s3 website s3://$BUCKET --index-document index.html
-
-# CORS on S3 (needed for worker XHR)
-aws s3api put-bucket-cors --bucket $BUCKET --cors-configuration '{
-  "CORSRules": [{
-    "AllowedOrigins": ["*"],
-    "AllowedMethods": ["GET"],
-    "AllowedHeaders": ["*"],
-    "ExposeHeaders": ["fileid", "pkid"],
-    "MaxAgeSeconds": 86400
-  }]
-}'
-
-# Create CloudFront CORS response headers policy
-POLICY_ID=$(aws cloudfront create-response-headers-policy --response-headers-policy-config '{
-  "Name": "texlive-cors-policy",
-  "Comment": "CORS for TeX Live static files",
-  "CorsConfig": {
-    "AccessControlAllowOrigins": { "Quantity": 1, "Items": ["*"] },
-    "AccessControlAllowMethods": { "Quantity": 1, "Items": ["GET"] },
-    "AccessControlAllowHeaders": { "Quantity": 1, "Items": ["*"] },
-    "AccessControlExposeHeaders": { "Quantity": 2, "Items": ["fileid", "pkid"] },
-    "AccessControlAllowCredentials": false,
-    "AccessControlMaxAgeSec": 86400,
-    "OriginOverride": true
-  }
-}' --query 'ResponseHeadersPolicy.Id' --output text)
-
-# Create CloudFront distribution
-# Uses S3 website endpoint as custom origin (not S3 origin) for proper 404 handling
-aws cloudfront create-distribution --cli-input-json "{
-  \"DistributionConfig\": {
-    \"CallerReference\": \"$BUCKET-$(date +%s)\",
-    \"Comment\": \"TeX Live static file serving\",
-    \"Enabled\": true,
-    \"Origins\": {
-      \"Quantity\": 1,
-      \"Items\": [{
-        \"Id\": \"S3-Website-$BUCKET\",
-        \"DomainName\": \"$BUCKET.s3-website.$REGION.amazonaws.com\",
-        \"CustomOriginConfig\": {
-          \"HTTPPort\": 80, \"HTTPSPort\": 443,
-          \"OriginProtocolPolicy\": \"http-only\",
-          \"OriginSslProtocols\": { \"Quantity\": 1, \"Items\": [\"TLSv1.2\"] }
-        }
-      }]
-    },
-    \"DefaultCacheBehavior\": {
-      \"TargetOriginId\": \"S3-Website-$BUCKET\",
-      \"ViewerProtocolPolicy\": \"redirect-to-https\",
-      \"ResponseHeadersPolicyId\": \"$POLICY_ID\",
-      \"AllowedMethods\": { \"Quantity\": 2, \"Items\": [\"GET\", \"HEAD\"],
-        \"CachedMethods\": { \"Quantity\": 2, \"Items\": [\"GET\", \"HEAD\"] } },
-      \"ForwardedValues\": { \"QueryString\": false,
-        \"Cookies\": { \"Forward\": \"none\" }, \"Headers\": { \"Quantity\": 0 } },
-      \"Compress\": true,
-      \"MinTTL\": 86400, \"DefaultTTL\": 2592000, \"MaxTTL\": 31536000
-    },
-    \"PriceClass\": \"PriceClass_200\",
-    \"ViewerCertificate\": { \"CloudFrontDefaultCertificate\": true },
-    \"HttpVersion\": \"http2and3\"
-  }
-}"
-```
-
-</details>
+Downloads the TeX Live 2020 texmf tarball from CTAN, extracts into flat structure, uploads to S3. Caches tarball in `/tmp/texlive-s3/`.
 
 ### Version constraint
 
-The WASM binary is pdfTeX **1.40.22**. Format files (`.fmt`) must be built by this exact version. Do **not** use Ubuntu 20.04's system `pdflatex.fmt` (built by 1.40.20) — it produces "Fatal format file error; I'm stymied".
+The WASM binary is pdfTeX **1.40.22**. Format files (`.fmt`) must match this exact version — Ubuntu 20.04's system `pdflatex.fmt` (built by 1.40.20) will not work.
+
+## Docker
+
+`docker compose up` runs the Vite dev server in a container (port 5555 → 5173). Useful for E2E tests.
+
+```bash
+docker compose up -d    # start
+npm run test:e2e        # Playwright tests hit localhost:5555
+```
 
 ## Tests
 
@@ -280,7 +178,6 @@ Test files live next to source: `src/**/*.test.ts`
 ### E2E tests
 
 ```bash
-# Requires the full stack running
 docker compose up -d
 npm run test:e2e
 ```
@@ -291,8 +188,8 @@ E2E tests use Playwright and live in `e2e/`.
 
 ### WASM worker caches 404s
 
-If a file was temporarily missing and the worker cached the 404, the cache persists across recompiles. Fix: hard refresh the browser (Cmd+Shift+R) to clear the worker's `texlive404_cache`.
+If a file was temporarily missing and the worker cached the 404, hard refresh (Cmd+Shift+R) to clear the worker's `texlive404_cache`.
 
 ### l3backend errors
 
-Newer `l3backend` packages (2023+) require `\__kernel_dependency_version_check:nn` which doesn't exist in the pdfTeX 1.40.22 format. The S3 deployment ships TeX Live 2020's `l3backend-pdfmode.def` which has no version check and works fine.
+Newer `l3backend` packages (2023+) require `\__kernel_dependency_version_check:nn` which doesn't exist in the pdfTeX 1.40.22 format. The S3 deployment ships TeX Live 2020's `l3backend-pdfmode.def` which has no version check.
