@@ -117,8 +117,10 @@ export class LatexEditor {
     try {
       await this.engine.init()
 
-      // Write all FS files to engine and compile
-      for (const path of this.fs.listFiles()) {
+      // Create directories and write all FS files to engine
+      const paths = this.fs.listFiles()
+      this.ensureEngineDirectories(paths)
+      for (const path of paths) {
         const file = this.fs.getFile(path)!
         this.engine.writeFile(path, file.content)
       }
@@ -215,6 +217,11 @@ export class LatexEditor {
     this.disposeModel(path)
     this.projectIndex.removeFile(path)
     return this.fs.deleteFile(path)
+  }
+
+  createFolder(path: string): void {
+    const folderPath = path.replace(/\/+$/, '')
+    this.fs.writeFile(`${folderPath}/.gitkeep`, '')
   }
 
   listFiles(): string[] {
@@ -484,13 +491,30 @@ export class LatexEditor {
     const status = this.engine.getStatus()
     if (status === 'unloaded' || status === 'loading' || status === 'error') return
 
-    for (const file of this.fs.getModifiedFiles()) {
+    const modified = this.fs.getModifiedFiles()
+    this.ensureEngineDirectories(modified.map((f) => f.path))
+    for (const file of modified) {
       this.engine.writeFile(file.path, file.content)
     }
     this.fs.markSynced()
 
     this.engine.setMainFile(this.mainFile)
     this.scheduler.schedule()
+  }
+
+  private ensureEngineDirectories(paths: string[]): void {
+    const dirs = new Set<string>()
+    for (const p of paths) {
+      const parts = p.split('/')
+      let dir = ''
+      for (let i = 0; i < parts.length - 1; i++) {
+        dir = dir ? `${dir}/${parts[i]!}` : parts[i]!
+        dirs.add(dir)
+      }
+    }
+    for (const dir of Array.from(dirs).sort()) {
+      this.engine.mkdir(dir)
+    }
   }
 
   private onEditorChange(content: string): void {

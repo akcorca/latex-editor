@@ -337,3 +337,36 @@ body {
   display: flex;
   gap: 2px;
 }
+
+/* Folder items */
+.folder-item {
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  color: #ccc;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+}
+
+.folder-item:hover {
+  background: #2a2d2e;
+}
+
+.folder-item.drag-over {
+  background: #094771;
+}
+
+.folder-toggle {
+  font-size: 10px;
+  width: 12px;
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.folder-name {
+  color: #ccc;
+}

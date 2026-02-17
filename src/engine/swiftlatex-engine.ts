@@ -19,6 +19,7 @@ type WorkerOutMessage =
   | { cmd: 'preloadtexlive'; format: number; filename: string; data: ArrayBuffer; msgId: string }
   | { cmd: 'settexliveurl'; url: string }
   | { cmd: 'writefile'; url: string; src: string | Uint8Array }
+  | { cmd: 'mkdir'; url: string }
   | { cmd: 'setmainfile'; url: string }
 
 /** Incoming response message from the WASM worker. */
@@ -216,6 +217,11 @@ export class SwiftLatexEngine {
         this.worker!.postMessage(msg)
       }
     })
+  }
+
+  mkdir(path: string): void {
+    this.checkInitialized()
+    this.worker!.postMessage({ cmd: 'mkdir', url: path })
   }
 
   writeFile(path: string, content: string | Uint8Array): void {
