@@ -112,9 +112,10 @@ RUN echo "=== Phase 1b: Native build ===" && \
            /build/native/texk/web2c/pdftexd.h && \
     echo "" && \
     echo "=== Verifying bibtex C files ===" && \
-    ls -la /build/native/texk/web2c/bibtex.c \
-           /build/native/texk/web2c/bibtex.h 2>/dev/null || \
-        echo "WARNING: bibtex C files not generated"
+    ls -la /build/native/texk/web2c/bibtex* 2>/dev/null || \
+        echo "WARNING: no bibtex files found" && \
+    echo "=== All web2c bibtex-related files ===" && \
+    find /build/native/texk/web2c -name 'bibtex*' -ls 2>/dev/null || true
 
 # =============================================================================
 # COPY build scripts (AFTER native build — changes here won't invalidate above)

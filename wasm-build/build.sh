@@ -74,17 +74,21 @@ echo ""
 # BibTeX WASM build (optional — requires Phase 1 with --enable-bibtex)
 # ---------------------------------------------------------------------------
 
-if ls /build/native/texk/web2c/bibtex*.c >/dev/null 2>&1; then
+if ls /build/native/texk/web2c/bibtex.c >/dev/null 2>&1; then
     echo "============================================================"
     echo "  BibTeX WASM build"
     echo "============================================================"
     echo ""
     echo "--- BibTeX: compile ---"
-    make -f /src/Makefile bibtex-wasm-compile
-    echo ""
-    ls -lh /dist/swiftlatexbibtex.* 2>/dev/null || echo "  (BibTeX build failed)"
+    if make -f /src/Makefile bibtex-wasm-compile; then
+        echo ""
+        ls -lh /dist/swiftlatexbibtex.* 2>/dev/null || echo "  (BibTeX output files missing)"
+    else
+        echo ""
+        echo "  WARNING: BibTeX WASM build failed (non-fatal)"
+    fi
 else
-    echo "Skipping BibTeX WASM build (no bibtex C files from Phase 1)."
+    echo "Skipping BibTeX WASM build (no bibtex.c from Phase 1)."
     echo "To build BibTeX, rebuild Docker image with --enable-bibtex in Phase 1."
 fi
 echo ""

@@ -483,11 +483,13 @@ bibtex-wasm-prep:
 	@echo "BibTeX: Prepare WASM sources"
 	@echo "========================================"
 	# Copy bibtex C files from native build (Phase 1 with --enable-bibtex)
-	-cp $(BUILD_NATIVE)/texk/web2c/bibtex.c      $(BUILD_WASM)/texk/web2c/ 2>/dev/null
-	-cp $(BUILD_NATIVE)/texk/web2c/bibtex.h      $(BUILD_WASM)/texk/web2c/ 2>/dev/null
-	-cp $(BUILD_NATIVE)/texk/web2c/bibtex-pool.c $(BUILD_WASM)/texk/web2c/ 2>/dev/null
-	-cp $(BUILD_NATIVE)/texk/web2c/bibtexd.h     $(BUILD_WASM)/texk/web2c/ 2>/dev/null
-	@ls $(BUILD_WASM)/texk/web2c/bibtex*.c 2>/dev/null || \
+	# bibtex only generates bibtex.c + bibtex.h (no -pool.c or d.h like pdftex)
+	-cp $(BUILD_NATIVE)/texk/web2c/bibtex.c $(BUILD_WASM)/texk/web2c/ 2>/dev/null
+	-cp $(BUILD_NATIVE)/texk/web2c/bibtex.h $(BUILD_WASM)/texk/web2c/ 2>/dev/null
+	@echo "--- Native bibtex files available ---"
+	@ls -la $(BUILD_NATIVE)/texk/web2c/bibtex* 2>/dev/null || echo "  (none found in native build)"
+	@echo "--- Copied to WASM build ---"
+	@ls -la $(BUILD_WASM)/texk/web2c/bibtex* 2>/dev/null || \
 		echo "WARNING: bibtex C files not found. Phase 1 needs --enable-bibtex."
 
 bibtex-wasm-compile: bibtex-wasm-prep
@@ -507,7 +509,6 @@ bibtex-wasm-compile: bibtex-wasm-prep
 		-I$(TEXLIVE_SRC)/texk \
 		-I$(BUILD_WASM)/texk \
 		bibtex.c \
-		bibtex-pool.c \
 		$(WEB2C_LIB_SOURCES) \
 		$(BIBTEX_ENTRY) \
 		$(KPSE_HOOK) \
