@@ -139,10 +139,10 @@ export class PdfViewer {
 
     const oldDoc = this.pdfDoc
 
-    // Copy the data so the original ArrayBuffer isn't detached by postMessage
-    const data = pdfData.slice()
-    this.lastPdf = data
-    this.pdfDoc = await pdfjsLib.getDocument({ data, worker: pdfWorker }).promise
+    // Keep a copy for download — pdf.js transfers the ArrayBuffer to its worker,
+    // which detaches it, so we need a separate copy that stays valid.
+    this.lastPdf = pdfData.slice()
+    this.pdfDoc = await pdfjsLib.getDocument({ data: pdfData.slice(), worker: pdfWorker }).promise
 
     // Bail if a newer render was requested while loading
     if (generation !== this.renderGeneration) {

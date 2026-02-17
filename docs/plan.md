@@ -501,7 +501,7 @@ cp dist/swiftlatexpdftex.{js,wasm} ../public/swiftlatex/
 **gh-pages 정적 배포 호환**
 - [x] **Base path**: `import.meta.env.BASE_URL`로 모든 정적 자산 경로 수정
 - [x] **Format 파일 호환**: SyncTeX WASM 바이너리(1.40.22)용 `.fmt` 추출 (Playwright 자동화)
-- [x] **TeX 파일 번들링**: 277개 필수 파일 (13MB) — `scripts/bundle-texlive.mjs`
+- [x] ~~**TeX 파일 번들링**: 277개 필수 파일 (13MB)~~ → I6c에서 S3 + CloudFront로 대체, `public/texlive/` 삭제
 - [x] **kpse 정적 호스팅 대응**: `fileid`/`pkid` 헤더 없는 환경 + 404 캐싱
 - [x] **Service Worker**: base-path-aware fetch 핸들러
 
@@ -509,8 +509,8 @@ cp dist/swiftlatexpdftex.{js,wasm} ../public/swiftlatex/
 
 **배포 현황:**
 - **URL**: `https://akcorca.github.io/latex-editor/`
-- **정적 자산**: WASM 1.6MB + worker 132KB + .fmt 2.3MB + texlive 13MB ≈ **17MB total**
-- **제약**: 번들에 포함된 패키지만 사용 가능 (article, amsmath, amssymb, amsthm + 의존성)
+- **정적 자산**: WASM 1.6MB + worker 119KB + .fmt 2.3MB ≈ **4MB** (gzip ~2MB)
+- **패키지**: 전체 TeX Live (~120k 파일) S3 + CloudFront에서 on-demand 서빙
 
 ---
 
@@ -792,13 +792,10 @@ WASM 재빌드 후 확인 (CI run 22049940861):
 
 **사용자 가치:** 초기 로드 전송량 대폭 감소 (gh-pages에서 체감 속도 향상)
 
-### Phase 1: 비영어 하이프네이션 파일 제거 (~3.0MB 절감)
+### Phase 1: 정적 번들 경량화 (이후 I6c에서 S3 전환으로 삭제됨)
 
-`.fmt` 파일에 모든 언어의 하이프네이션 trie가 baked-in 되어 있으므로 소스 `.tex` 파일은 static bundle에서 불필요.
-
-- [x] `public/texlive/pdftex/26/`: 156개 비영어 하이프네이션 파일 삭제 (6.7MB → 3.7MB)
-- [x] `scripts/bundle-texlive.mjs`: `isNonEnglishHyphenation()` 필터 추가 (재번들 시 자동 제외)
-- [x] 영어 파일 유지: `hyph-en-{us,gb}.tex`, `loadhyph-en-{us,gb}.tex`, `hyphen.tex`, `hyphen.cfg`, `language.dat`, `dumyhyph.tex`, `zerohyph.tex`
+~~`public/texlive/` 번들에서 비영어 하이프네이션 파일 제거 (~3.0MB 절감).~~
+→ I6c에서 `public/texlive/` 전체 삭제. 모든 패키지를 S3 + CloudFront에서 on-demand 서빙.
 
 ### Phase 2-3: pdftex.map gzip 프리로드 + onmessage 리팩터
 
@@ -813,12 +810,12 @@ WASM 재빌드 후 확인 (CI run 22049940861):
 
 ### 결과
 
-| 자산 | Before | After | Transfer (gzip) |
-|------|--------|-------|-----------------|
-| texlive/26/ | 6.7MB (213 files) | 3.7MB (57 files) | ~1.0MB |
-| texlive/11/pdftex.map | 4.6MB (sync XHR) | 4.6MB + 371KB .gz | **371KB** (preload) |
-| swiftlatex/fmt | 2.3MB | 2.3MB (high entropy, gzip 무효) | ~2.3MB |
-| swiftlatex/wasm | 1.6MB | 1.6MB | ~0.5MB (CDN gzip) |
+| 자산 | Transfer (gzip) | 비고 |
+|------|-----------------|------|
+| swiftlatex/wasm | ~0.5MB | CDN gzip |
+| swiftlatex/fmt | ~2.3MB | High entropy, gzip 무효 |
+| pdftex.map | **371KB** | `.gz` 프리로드, `DecompressionStream` 해제 |
+| TeX 패키지 | On-demand | S3 + CloudFront에서 필요 시 fetch |
 
 ---
 
@@ -968,6 +965,41 @@ WASM 재빌드 후 확인 (CI run 22049940861):
 
 ---
 
+## Iteration 6c — S3 + CloudFront TexLive 서빙 + 배포 수정 ✅
+
+**사용자 가치:** gh-pages 배포에서 **전체 TeX Live 패키지** 사용 가능 — 번들에 포함된 패키지만 사용 가능하던 제약 완전 해소
+
+### TexLive S3/CloudFront 마이그레이션
+
+texlive-server(`app.py`)는 순수 파일 서빙(kpathsea 룩업 → HTTP 응답)만 수행하며 서버 로직 없음 → 정적 호스팅으로 완전 대체 가능.
+
+- [x] S3 버킷 `akcorca-texlive` (ap-northeast-2) 생성, public read 설정, CORS, website hosting (404 반환)
+- [x] CloudFront 배포 `EZLBEEMI7TKVN` (`dwrg2en9emzif.cloudfront.net`) — CORS 응답 헤더 정책 포함
+- [x] Docker texlive 컨테이너에서 ~120k 파일 추출 + S3 업로드 (~1.7GB)
+  - 두 texmf 트리 모두 검색: `/usr/share/texlive/texmf-dist/` + `/usr/share/texmf/`
+  - 7개 타입: TFM(3), format(10), map(11), tex sources(26), PFB(32), VF(33), enc(44)
+- [x] `VITE_TEXLIVE_URL` 환경 변수 → CI 빌드에서 CloudFront URL 주입
+- [x] `public/texlive/` 정적 번들 삭제 (~125 파일, ~10MB) — S3로 완전 대체
+
+### Worker 수정
+
+- [x] `loadformat` 핸들러: `_fmtFallback` → `_fmtData` + `_fmtIsNative = true` (format 불필요 재빌드 방지)
+- [x] pdftex.map 프리로드: 로컬 번들 경로 → CloudFront URL로 변경
+- [x] 디버그 로깅 추가/제거 (kpse hook XHR 상태 + memlog 덤프 → 디버깅 후 제거)
+
+### 버그 수정
+
+- [x] **PDF 다운로드 깨짐**: pdf.js가 ArrayBuffer를 worker에 transfer → `lastPdf.buffer` detach. 별도 복사본 저장으로 수정
+- [x] **프로그레스 바 "Ready" 정체**: 초기 컴파일 전 `setStatus('compiling')` 누락. Loading → Compiling → Rendering 순서로 수정
+- [x] **`cm-super-ts1.enc` 404**: `/usr/share/texmf/` 트리 누락 — S3 추출 스크립트에 두 번째 texmf 트리 추가
+- [x] **VF (virtual fonts) 전체 누락**: format 33 미추출 — 22,622개 VF 파일 추가 업로드
+
+### 문서 갱신
+
+- [x] `docs/develop.md`: S3+CloudFront 서빙 옵션 문서화 (URL 구조, 추출 스크립트, CloudFront 설정 CLI)
+
+---
+
 # Part III. 로드맵 (미구현)
 
 ## ~~Iteration 5b Phase 3 — Semantic Trace (매크로 인수 추출)~~ → ✅ 완료
@@ -1076,17 +1108,19 @@ pdfTeX `ship_out()`에 PDL 출력 드라이버 추가. WebGPU로 PDL 렌더.
 | I6 | 정적 진단 (undefined ref/cite, duplicate label) + 로그 파서 강화 | ✅ |
 | I6b | 멀티파일 프로젝트 (model-per-file, 멀티파일 SyncTeX, 크로스파일 에러/진단) | ✅ |
 | I5b-4 | Semantic Trace Phase 4 (엔진 트레이스 → LSP 진실 소스, 매크로 label/ref 추적) | ✅ |
+| I6c | S3 + CloudFront TexLive 서빙 + 배포 수정 (전체 패키지 사용 가능) | ✅ |
 
 ## 코드베이스 현황
 
 | 지표 | 수치 |
 |------|------|
-| TypeScript 소스 | 36 파일, ~6,600줄 (프로덕션) |
-| 단위 테스트 | 13 파일, 249 tests |
+| TypeScript 소스 | 36 파일, ~6,500줄 (프로덕션) |
+| 단위 테스트 | 13 파일, 238 tests |
 | E2E 테스트 | 8 스펙, ~1,070줄 |
-| WASM 빌드 | 7 파일 (Dockerfile, Makefile, build.sh, worker-template.js, wasm-entry.c, kpse-hook.c, trace-hook.c) |
+| WASM 빌드 | 8 파일 (Dockerfile, Makefile, build.sh, worker-template.js, wasm-entry.c, kpse-hook.c, trace-hook.c, library.js) |
 | 런타임 의존성 | 2개 (monaco-editor, pdfjs-dist) |
-| 정적 자산 | WASM 1.6MB + worker 137KB + .fmt 2.3MB + texlive 8.7MB ≈ 13MB (raw), ~4MB (gzip transfer) |
+| 정적 자산 (gh-pages) | WASM 1.6MB + worker 119KB + .fmt 2.3MB ≈ 4MB (gzip ~2MB) |
+| TexLive 패키지 (S3) | ~120k 파일, ~1.7GB (CloudFront CDN on-demand 서빙) |
 | 배포 | https://akcorca.github.io/latex-editor/ |
 
 ## 다음 작업 우선순위

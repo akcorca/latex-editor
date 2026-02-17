@@ -8,7 +8,7 @@ docker compose up
 # App: http://localhost:5555
 # TexLive server: http://localhost:5001
 
-# Frontend only (no LaTeX package support)
+# Frontend only (uses CloudFront for packages, or set VITE_TEXLIVE_URL)
 npm run dev
 ```
 
@@ -42,15 +42,16 @@ Browser
 ├── Monaco Editor (code editing)
 ├── PDF.js (PDF rendering)
 └── SwiftLaTeX WASM Worker (pdfTeX 1.40.22)
-      └── fetches packages from TexLive server
+      └── fetches packages on demand from CloudFront CDN (or Docker texlive server)
 
-TexLive Server (Docker, port 5001)
-└── Flask app serving .tfm, .sty, .cls, .fmt files
+Production: S3 + CloudFront (dwrg2en9emzif.cloudfront.net)
+Development: Docker texlive server (port 5001)
 ```
 
 - **No framework** — vanilla TypeScript + Vite
 - WASM engine runs in a Web Worker, communicates via `postMessage`
 - SyncTeX provides bidirectional PDF ↔ source navigation
+- All TeX Live packages served from S3/CloudFront in production (~120k files)
 
 ## Project Structure
 
@@ -58,14 +59,18 @@ TexLive Server (Docker, port 5001)
 src/
 ├── engine/           # WASM engine wrapper, compile scheduler
 ├── editor/           # Monaco editor setup
-├── viewer/           # PDF.js viewer, click handling
+├── viewer/           # PDF.js viewer, page renderer
 ├── synctex/          # SyncTeX parser + text-based fallback mapper
+├── lsp/              # LaTeX language services (completion, hover, diagnostics, etc.)
 ├── fs/               # Virtual filesystem
-├── main.ts           # App entry point
+├── ui/               # File tree, error log, layout, error markers
+├── perf/             # Performance metrics + debug overlay
+├── latex-editor.ts   # Component API (LatexEditor class)
+├── main.ts           # Standalone app entry point
 └── types.ts          # Shared types
 
 public/swiftlatex/    # WASM engine files (not in git)
-texlive-server/       # Flask server for TeX packages
+texlive-server/       # Flask server for TeX packages (dev only)
 wasm-build/           # pdfTeX WASM build pipeline (Docker)
 scripts/              # Helper scripts
 e2e/                  # Playwright E2E tests
@@ -141,7 +146,7 @@ The texlive server has **no computation logic** — it only maps filenames to fi
 |----------|-------|
 | S3 bucket | `akcorca-texlive` (ap-northeast-2) |
 | CloudFront | `dwrg2en9emzif.cloudfront.net` (distribution `EZLBEEMI7TKVN`) |
-| Files | ~94,000 files, ~320 MB |
+| Files | ~120,000 files, ~1.7 GB |
 | CORS | `Access-Control-Allow-Origin: *`, exposes `fileid`/`pkid` headers |
 
 To use, set the `texliveUrl` option:
@@ -163,6 +168,7 @@ The WASM worker requests files as `{texliveUrl}pdftex/{format}/{filename}`:
 | 11 | Font maps | `pdftex/11/pdftex.map` |
 | 26 | TeX sources (.sty, .cls, .def, ...) | `pdftex/26/geometry.sty` |
 | 32 | PostScript fonts (.pfb) | `pdftex/32/cmr10.pfb` |
+| 33 | Virtual fonts (no extension) | `pdftex/33/cmr10` |
 | 44 | Encoding files (.enc) | `pdftex/44/cm-super-ts1.enc` |
 
 Missing files must return 404 (not 403). The worker caches both hits and misses in memory.
@@ -177,7 +183,10 @@ docker compose up -d texlive
 
 # 2. Extract files into flat structure inside the container
 docker exec latex-texlive-1 bash -c '
-mkdir -p /tmp/texlive-s3/pdftex/{3,10,11,26,32,44}
+mkdir -p /tmp/texlive-s3/pdftex/{3,10,11,26,32,33,44}
+
+# Both texmf trees contain files — search both (texmf-dist first, texmf second)
+TEXMF_DIRS="/usr/share/texlive/texmf-dist /usr/share/texmf"
 
 # Type 26: TeX sources (latex/ takes priority over latex-dev/)
 for dir in \
@@ -192,31 +201,48 @@ for dir in \
 done
 
 # Type 3: TFM fonts (strip .tfm extension)
-find /usr/share/texlive/texmf-dist/fonts/tfm -name "*.tfm" | while read f; do
-    bn=$(basename "$f" .tfm)
-    dst="/tmp/texlive-s3/pdftex/3/$bn"
-    [ ! -f "$dst" ] && cp "$f" "$dst"
+for base in $TEXMF_DIRS; do
+    [ -d "$base/fonts/tfm" ] && find "$base/fonts/tfm" -name "*.tfm" | while read f; do
+        bn=$(basename "$f" .tfm)
+        dst="/tmp/texlive-s3/pdftex/3/$bn"
+        [ ! -f "$dst" ] && cp "$f" "$dst"
+    done
 done
 
 # Type 32: PostScript fonts
-find /usr/share/texlive/texmf-dist/fonts/type1 -name "*.pfb" | while read f; do
-    bn=$(basename "$f")
-    dst="/tmp/texlive-s3/pdftex/32/$bn"
-    [ ! -f "$dst" ] && cp "$f" "$dst"
+for base in $TEXMF_DIRS; do
+    [ -d "$base/fonts/type1" ] && find "$base/fonts/type1" -name "*.pfb" | while read f; do
+        bn=$(basename "$f")
+        dst="/tmp/texlive-s3/pdftex/32/$bn"
+        [ ! -f "$dst" ] && cp "$f" "$dst"
+    done
+done
+
+# Type 33: Virtual fonts (strip .vf extension)
+for base in $TEXMF_DIRS; do
+    [ -d "$base/fonts/vf" ] && find "$base/fonts/vf" -name "*.vf" | while read f; do
+        bn=$(basename "$f" .vf)
+        dst="/tmp/texlive-s3/pdftex/33/$bn"
+        [ ! -f "$dst" ] && cp "$f" "$dst"
+    done
 done
 
 # Type 11: Font maps
-find /usr/share/texlive/texmf-dist/fonts/map -name "*.map" | while read f; do
-    bn=$(basename "$f")
-    dst="/tmp/texlive-s3/pdftex/11/$bn"
-    [ ! -f "$dst" ] && cp "$f" "$dst"
+for base in $TEXMF_DIRS; do
+    [ -d "$base/fonts/map" ] && find "$base/fonts/map" -name "*.map" | while read f; do
+        bn=$(basename "$f")
+        dst="/tmp/texlive-s3/pdftex/11/$bn"
+        [ ! -f "$dst" ] && cp "$f" "$dst"
+    done
 done
 
 # Type 44: Encoding files
-find /usr/share/texlive/texmf-dist/fonts/enc -name "*.enc" | while read f; do
-    bn=$(basename "$f")
-    dst="/tmp/texlive-s3/pdftex/44/$bn"
-    [ ! -f "$dst" ] && cp "$f" "$dst"
+for base in $TEXMF_DIRS; do
+    [ -d "$base/fonts/enc" ] && find "$base/fonts/enc" -name "*.enc" | while read f; do
+        bn=$(basename "$f")
+        dst="/tmp/texlive-s3/pdftex/44/$bn"
+        [ ! -f "$dst" ] && cp "$f" "$dst"
+    done
 done
 '
 
@@ -318,10 +344,6 @@ aws cloudfront create-distribution --cli-input-json "{
   }
 }"
 ```
-
-### Option C: Bundled files only (static hosting, no server)
-
-A minimal set of packages is pre-bundled in `public/texlive/pdftex/` (~10 MB). This covers `article.cls`, `amsmath`, `amssymb`, `amsthm`, and Computer Modern fonts. Documents using only these packages compile without any server.
 
 ### Version constraint
 

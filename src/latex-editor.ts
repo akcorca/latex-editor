@@ -101,7 +101,6 @@ export class LatexEditor {
 
     try {
       await this.engine.init()
-      this.setStatus('ready')
 
       // Write all FS files to engine and compile
       for (const path of this.fs.listFiles()) {
@@ -111,6 +110,7 @@ export class LatexEditor {
       this.fs.markSynced()
 
       this.engine.setMainFile(this.mainFile)
+      this.setStatus('compiling')
       const result = await this.engine.compile()
       this.onCompileResult(result)
     } catch (err) {

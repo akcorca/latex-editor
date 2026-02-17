@@ -384,8 +384,6 @@ var texlive200_cache = {};
 
 function kpse_find_file_impl(nameptr, format, _mustexist) {
     var reqname = UTF8ToString(nameptr);
-    // console.log("[kpse] find_file: " + reqname + " (format=" + format + ")");
-
     // Only fetch bare filenames, not paths
     if (reqname.includes("/")) {
         return 0;
@@ -417,8 +415,6 @@ function kpse_find_file_impl(nameptr, format, _mustexist) {
         console.log("TexLive Download Failed " + remote_url);
         return 0;
     }
-
-    // console.log("[kpse] XHR status=" + xhr.status + " responseSize=" + (xhr.response ? xhr.response.byteLength : "null"));
 
     if (xhr.status === 200) {
         var arraybuffer = xhr.response;
@@ -752,7 +748,6 @@ function compileLaTeXRoutine() {
             pdfArrayBuffer = FS.readFile(pdfPath, { encoding: "binary" });
         } catch(err) {
             console.error("Failed to read PDF output: " + pdfPath);
-            console.error("[memlog]\n" + self.memlog);
             self.postMessage({
                 "result": "failed",
                 "status": status,
