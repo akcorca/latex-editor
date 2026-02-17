@@ -1,5 +1,31 @@
 import type { VirtualFS } from '../fs/virtual-fs'
 
+const TEXT_EXTENSIONS = new Set([
+  '.tex',
+  '.bib',
+  '.bst',
+  '.cls',
+  '.sty',
+  '.txt',
+  '.md',
+  '.cfg',
+  '.def',
+  '.fd',
+  '.dtx',
+  '.ins',
+  '.ltx',
+  '.log',
+  '.aux',
+  '.bbl',
+  '.blg',
+])
+
+function isTextFile(name: string): boolean {
+  const dot = name.lastIndexOf('.')
+  if (dot === -1) return true
+  return TEXT_EXTENSIONS.has(name.substring(dot).toLowerCase())
+}
+
 export class FileTree {
   private container: HTMLElement
   private activeFile: string = 'main.tex'
@@ -11,6 +37,7 @@ export class FileTree {
     this.fs = fs
     this.onSelect = onSelect
     this.render()
+    this.setupDragDrop()
 
     fs.onChange(() => this.render())
   }
@@ -25,12 +52,21 @@ export class FileTree {
     const title = document.createElement('span')
     title.textContent = 'Files'
 
+    const btnGroup = document.createElement('div')
+    btnGroup.className = 'file-tree-btns'
+
+    const uploadBtn = document.createElement('button')
+    uploadBtn.textContent = '\u2191'
+    uploadBtn.title = 'Upload files'
+    uploadBtn.onclick = () => this.triggerUpload()
+
     const addBtn = document.createElement('button')
     addBtn.textContent = '+'
     addBtn.title = 'New file'
     addBtn.onclick = () => this.createFile()
 
-    header.append(title, addBtn)
+    btnGroup.append(uploadBtn, addBtn)
+    header.append(title, btnGroup)
     this.container.appendChild(header)
 
     // File list
@@ -81,6 +117,61 @@ export class FileTree {
     this.fs.writeFile(path, '')
     this.activeFile = path
     this.onSelect(path)
+  }
+
+  private setupDragDrop(): void {
+    this.container.addEventListener('dragover', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      this.container.classList.add('drag-over')
+    })
+
+    this.container.addEventListener('dragleave', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      this.container.classList.remove('drag-over')
+    })
+
+    this.container.addEventListener('drop', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      this.container.classList.remove('drag-over')
+      if (e.dataTransfer?.files) {
+        this.uploadFiles(e.dataTransfer.files)
+      }
+    })
+  }
+
+  private uploadFiles(files: FileList): void {
+    for (const file of files) {
+      if (isTextFile(file.name)) {
+        const reader = new FileReader()
+        reader.onload = () => {
+          this.fs.writeFile(file.name, reader.result as string)
+          this.activeFile = file.name
+          this.onSelect(file.name)
+        }
+        reader.readAsText(file)
+      } else {
+        const reader = new FileReader()
+        reader.onload = () => {
+          this.fs.writeFile(file.name, new Uint8Array(reader.result as ArrayBuffer))
+          this.activeFile = file.name
+          this.onSelect(file.name)
+        }
+        reader.readAsArrayBuffer(file)
+      }
+    }
+  }
+
+  private triggerUpload(): void {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.multiple = true
+    input.onchange = () => {
+      if (input.files) this.uploadFiles(input.files)
+    }
+    input.click()
   }
 
   setActive(path: string): void {

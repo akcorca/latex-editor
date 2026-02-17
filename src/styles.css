@@ -68,6 +68,7 @@ body {
 .le-editor {
   flex: 1;
   min-width: 200px;
+  position: relative;
 }
 
 .le-root .le-viewer {
@@ -298,4 +299,41 @@ body {
 
 .pdf-controls .zoom-label:hover {
   color: #ccc;
+}
+
+/* Binary file preview */
+.binary-preview {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1e1e1e;
+  z-index: 10;
+}
+
+.binary-preview-img {
+  max-width: 90%;
+  max-height: 90%;
+  object-fit: contain;
+}
+
+.binary-preview-info {
+  color: #888;
+  font-size: 14px;
+}
+
+/* File tree drag & drop */
+.le-file-tree.drag-over {
+  outline: 2px dashed #007acc;
+  outline-offset: -2px;
+}
+
+/* File tree header buttons */
+.file-tree-btns {
+  display: flex;
+  gap: 2px;
 }

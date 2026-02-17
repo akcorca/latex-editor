@@ -23,6 +23,20 @@ import { FileTree } from './ui/file-tree'
 import { setupDividers } from './ui/layout'
 import { PdfViewer } from './viewer/pdf-viewer'
 
+const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.bmp', '.webp'])
+
+function isImageFile(name: string): boolean {
+  const dot = name.lastIndexOf('.')
+  if (dot === -1) return false
+  return IMAGE_EXTENSIONS.has(name.substring(dot).toLowerCase())
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 type EventHandler<T> = (event: T) => void
 
 export class LatexEditor {
@@ -58,6 +72,7 @@ export class LatexEditor {
   private lastForwardFile = ''
   private switchingModel = false
   private lastCompileErrors: TexError[] = []
+  private previewEl: HTMLElement | null = null
   private disposed = false
 
   // --- Events ---
@@ -373,6 +388,12 @@ export class LatexEditor {
     const editorContainer = this.root.querySelector<HTMLElement>('.le-editor')!
     this.editor = createEditor(editorContainer, this.models.get(this.currentFile)!)
 
+    // Binary file preview overlay
+    this.previewEl = document.createElement('div')
+    this.previewEl.className = 'binary-preview'
+    this.previewEl.style.display = 'none'
+    editorContainer.appendChild(this.previewEl)
+
     // Single change handler — works across all model switches
     this.editorChangeDisposable = this.editor.onDidChangeModelContent(() => {
       this.onEditorChange(this.editor.getValue())
@@ -473,6 +494,7 @@ export class LatexEditor {
   }
 
   private onEditorChange(content: string): void {
+    if (this.previewEl && this.previewEl.style.display !== 'none') return
     perf.mark('total')
     perf.mark('debounce')
     this.fs.writeFile(this.currentFile, content)
@@ -483,8 +505,9 @@ export class LatexEditor {
   }
 
   private onFileSelect(path: string): void {
-    // Save current editor content and update index
-    if (this.editor) {
+    // Save current editor content if we were editing text (not previewing binary)
+    const wasPreviewingBinary = this.previewEl && this.previewEl.style.display !== 'none'
+    if (this.editor && !wasPreviewingBinary) {
       const value = this.editor.getValue()
       this.fs.writeFile(this.currentFile, value)
       this.projectIndex.updateFile(this.currentFile, value)
@@ -494,8 +517,18 @@ export class LatexEditor {
     this.lastForwardLine = -1
     this.lastForwardFile = ''
 
-    // Ensure model exists (file may have been added externally)
     const file = this.fs.getFile(path)
+    if (file && file.content instanceof Uint8Array) {
+      // Binary file — show preview instead of Monaco
+      this.showBinaryPreview(path, file.content)
+      this.fileTree.setActive(path)
+      return
+    }
+
+    // Text file — hide preview, restore editor
+    this.hideBinaryPreview()
+
+    // Ensure model exists (file may have been added externally)
     if (file && typeof file.content === 'string' && !this.models.has(path)) {
       this.ensureModel(path, file.content)
     }
@@ -510,6 +543,35 @@ export class LatexEditor {
     }
     this.fileTree.setActive(path)
     this.runDiagnostics()
+  }
+
+  private showBinaryPreview(path: string, data: Uint8Array): void {
+    if (!this.previewEl) return
+    this.previewEl.innerHTML = ''
+
+    if (isImageFile(path)) {
+      const blob = new Blob([data.buffer as ArrayBuffer])
+      const url = URL.createObjectURL(blob)
+      const img = document.createElement('img')
+      img.src = url
+      img.className = 'binary-preview-img'
+      img.onload = () => URL.revokeObjectURL(url)
+      this.previewEl.appendChild(img)
+    } else {
+      const info = document.createElement('div')
+      info.className = 'binary-preview-info'
+      const ext = path.substring(path.lastIndexOf('.'))
+      info.textContent = `${ext.toUpperCase()} file \u2014 ${formatBytes(data.length)}`
+      this.previewEl.appendChild(info)
+    }
+    this.previewEl.style.display = 'flex'
+  }
+
+  private hideBinaryPreview(): void {
+    if (this.previewEl) {
+      this.previewEl.style.display = 'none'
+      this.previewEl.innerHTML = ''
+    }
   }
 
   private updateEngineMetadata(result: CompileResult): void {
