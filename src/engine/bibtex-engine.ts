@@ -1,4 +1,4 @@
-import type { EngineStatus } from '../types'
+import { BaseWorkerEngine, resolveTexliveUrl } from './base-worker-engine'
 
 interface WorkerMessage {
   result?: string
@@ -7,17 +7,10 @@ interface WorkerMessage {
   data?: string
 }
 
-export class BibtexEngine {
-  private worker: Worker | null = null
-  private status: EngineStatus = 'unloaded'
-  private enginePath: string
-  private texliveUrl: string | null
-  private pendingResponses = new Map<string, (data: WorkerMessage) => void>()
-
+export class BibtexEngine extends BaseWorkerEngine<WorkerMessage> {
   constructor(options?: { assetBaseUrl?: string; texliveUrl?: string }) {
     const base = options?.assetBaseUrl ?? import.meta.env.BASE_URL
-    this.enginePath = `${base}swiftlatex/swiftlatexbibtex.js`
-    this.texliveUrl = options?.texliveUrl ?? null
+    super(`${base}swiftlatex/swiftlatexbibtex.js`, options?.texliveUrl ?? null)
   }
 
   async init(): Promise<void> {
@@ -53,11 +46,7 @@ export class BibtexEngine {
       }
     })
 
-    const texliveUrl =
-      this.texliveUrl ??
-      import.meta.env.VITE_TEXLIVE_URL ??
-      `${location.origin}${import.meta.env.BASE_URL}texlive/`
-    this.worker!.postMessage({ cmd: 'settexliveurl', url: texliveUrl })
+    this.worker!.postMessage({ cmd: 'settexliveurl', url: resolveTexliveUrl(this.texliveUrl) })
   }
 
   writeFile(path: string, content: string | Uint8Array): void {
@@ -97,18 +86,5 @@ export class BibtexEngine {
     })
 
     return data.result === 'ok' ? (data.data ?? null) : null
-  }
-
-  getStatus(): EngineStatus {
-    return this.status
-  }
-
-  terminate(): void {
-    if (this.worker) {
-      this.worker.terminate()
-      this.worker = null
-      this.status = 'unloaded'
-      this.pendingResponses.clear()
-    }
   }
 }

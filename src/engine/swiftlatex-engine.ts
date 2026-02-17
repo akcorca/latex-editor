@@ -1,4 +1,5 @@
-import type { CompileResult, EngineStatus } from '../types'
+import type { CompileResult } from '../types'
+import { BaseWorkerEngine, resolveTexliveUrl } from './base-worker-engine'
 import { parseTexErrors } from './parse-errors'
 
 export interface SwiftLatexEngineOptions {
@@ -38,19 +39,13 @@ interface WorkerMessage {
   semanticTrace?: string
 }
 
-export class SwiftLatexEngine {
-  private worker: Worker | null = null
-  private status: EngineStatus = 'unloaded'
-  private texliveUrl: string | null
-  private enginePath: string
+export class SwiftLatexEngine extends BaseWorkerEngine<WorkerMessage> {
   private formatPath: string
-  private pendingResponses = new Map<string, (data: WorkerMessage) => void>()
 
   constructor(options?: SwiftLatexEngineOptions) {
     const base = options?.assetBaseUrl ?? import.meta.env.BASE_URL
-    this.enginePath = `${base}swiftlatex/swiftlatexpdftex.js`
+    super(`${base}swiftlatex/swiftlatexpdftex.js`, options?.texliveUrl ?? null)
     this.formatPath = `${base}swiftlatex/swiftlatexpdftex.fmt`
-    this.texliveUrl = options?.texliveUrl ?? null
   }
 
   async init(): Promise<void> {
@@ -76,10 +71,7 @@ export class SwiftLatexEngine {
     // Set TexLive endpoint — proxied through Vite dev server (/texlive/ → texlive:5001)
     // Note: do NOT use PdfTeXEngine's setTexliveEndpoint() — it has a bug
     // that nullifies the worker reference after posting the message
-    const texliveUrl =
-      this.texliveUrl ??
-      import.meta.env.VITE_TEXLIVE_URL ??
-      `${location.origin}${import.meta.env.BASE_URL}texlive/`
+    const texliveUrl = resolveTexliveUrl(this.texliveUrl)
     this.worker!.postMessage({ cmd: 'settexliveurl', url: texliveUrl })
 
     // Pre-load format and pdftex.map in parallel
@@ -282,19 +274,6 @@ export class SwiftLatexEngine {
 
   isReady(): boolean {
     return this.status === 'ready'
-  }
-
-  getStatus(): EngineStatus {
-    return this.status
-  }
-
-  terminate(): void {
-    if (this.worker) {
-      this.worker.terminate()
-      this.worker = null
-      this.status = 'unloaded'
-      this.pendingResponses.clear()
-    }
   }
 
   /** Guard for compile() — must be 'ready' (not already compiling) */

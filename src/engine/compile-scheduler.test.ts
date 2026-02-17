@@ -22,13 +22,29 @@ function mockEngine(compileResult?: CompileResult) {
   }
 }
 
-function sched(
-  engine: ReturnType<typeof mockEngine>,
-  onResult: (result: CompileResult) => void,
-  onStatus: (status: 'compiling') => void,
-  opts?: { minDebounceMs?: number; maxDebounceMs?: number },
-) {
-  return new CompileScheduler(engine, onResult, onStatus, opts)
+/** Create a mock engine whose compile() blocks until manually resolved. */
+function mockAsyncEngine() {
+  let resolveCompile!: (result: CompileResult) => void
+  const engine = mockEngine()
+  ;(engine.compile as ReturnType<typeof vi.fn>).mockImplementation(
+    () =>
+      new Promise<CompileResult>((r) => {
+        resolveCompile = r
+      }),
+  )
+  return { engine, resolveCompile: (r: CompileResult) => resolveCompile(r) }
+}
+
+function setup(opts?: {
+  minDebounceMs?: number
+  maxDebounceMs?: number
+  compileResult?: CompileResult
+}) {
+  const engine = mockEngine(opts?.compileResult)
+  const onResult = vi.fn()
+  const onStatus = vi.fn()
+  const scheduler = new CompileScheduler(engine, onResult, onStatus, opts)
+  return { engine, onResult, onStatus, scheduler }
 }
 
 describe('CompileScheduler', () => {
@@ -41,10 +57,7 @@ describe('CompileScheduler', () => {
   })
 
   it('debounces compile calls', () => {
-    const engine = mockEngine()
-    const onResult = vi.fn()
-    const onStatus = vi.fn()
-    const scheduler = sched(engine, onResult, onStatus, { minDebounceMs: 300 })
+    const { engine, scheduler } = setup({ minDebounceMs: 300 })
 
     scheduler.schedule()
     scheduler.schedule()
@@ -58,23 +71,18 @@ describe('CompileScheduler', () => {
 
   it('calls onResult after compile', async () => {
     const result = makeResult()
-    const engine = mockEngine(result)
-    const onResult = vi.fn()
-    const onStatus = vi.fn()
-    const scheduler = sched(engine, onResult, onStatus, { minDebounceMs: 50 })
+    const { engine, onResult, scheduler } = setup({ minDebounceMs: 50, compileResult: result })
 
     scheduler.schedule()
     vi.advanceTimersByTime(50)
     await vi.advanceTimersByTimeAsync(0)
 
+    expect(engine.compile).toHaveBeenCalledTimes(1)
     expect(onResult).toHaveBeenCalledWith(result)
   })
 
   it('calls onStatusChange when compiling', () => {
-    const engine = mockEngine()
-    const onResult = vi.fn()
-    const onStatus = vi.fn()
-    const scheduler = sched(engine, onResult, onStatus, { minDebounceMs: 50 })
+    const { onStatus, scheduler } = setup({ minDebounceMs: 50 })
 
     scheduler.schedule()
     vi.advanceTimersByTime(50)
@@ -83,17 +91,10 @@ describe('CompileScheduler', () => {
   })
 
   it('queues a pending compile if already compiling', async () => {
-    let resolveCompile!: (result: CompileResult) => void
-    const engine = mockEngine()
-    ;(engine.compile as ReturnType<typeof vi.fn>).mockImplementation(
-      () =>
-        new Promise<CompileResult>((r) => {
-          resolveCompile = r
-        }),
-    )
+    const { engine, resolveCompile } = mockAsyncEngine()
     const onResult = vi.fn()
     const onStatus = vi.fn()
-    const scheduler = sched(engine, onResult, onStatus, { minDebounceMs: 0 })
+    const scheduler = new CompileScheduler(engine, onResult, onStatus, { minDebounceMs: 0 })
 
     scheduler.schedule()
     vi.advanceTimersByTime(0)
@@ -109,10 +110,7 @@ describe('CompileScheduler', () => {
   })
 
   it('cancel stops pending debounce', () => {
-    const engine = mockEngine()
-    const onResult = vi.fn()
-    const onStatus = vi.fn()
-    const scheduler = sched(engine, onResult, onStatus, { minDebounceMs: 300 })
+    const { engine, scheduler } = setup({ minDebounceMs: 300 })
 
     scheduler.schedule()
     scheduler.cancel()
@@ -122,11 +120,8 @@ describe('CompileScheduler', () => {
   })
 
   it('does not compile when engine is not ready', () => {
-    const engine = mockEngine()
+    const { engine, scheduler } = setup({ minDebounceMs: 0 })
     ;(engine.isReady as ReturnType<typeof vi.fn>).mockReturnValue(false)
-    const onResult = vi.fn()
-    const onStatus = vi.fn()
-    const scheduler = sched(engine, onResult, onStatus, { minDebounceMs: 0 })
 
     scheduler.schedule()
     vi.advanceTimersByTime(0)
@@ -135,11 +130,8 @@ describe('CompileScheduler', () => {
   })
 
   it('handles compile errors gracefully', async () => {
-    const engine = mockEngine()
+    const { engine, onResult, scheduler } = setup({ minDebounceMs: 0 })
     ;(engine.compile as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('WASM crash'))
-    const onResult = vi.fn()
-    const onStatus = vi.fn()
-    const scheduler = sched(engine, onResult, onStatus, { minDebounceMs: 0 })
 
     scheduler.schedule()
     vi.advanceTimersByTime(0)
@@ -154,17 +146,9 @@ describe('CompileScheduler', () => {
   // --- Generation counter tests ---
 
   it('discards stale compile results when generation advances', async () => {
-    let resolveCompile!: (result: CompileResult) => void
-    const engine = mockEngine()
-    ;(engine.compile as ReturnType<typeof vi.fn>).mockImplementation(
-      () =>
-        new Promise<CompileResult>((r) => {
-          resolveCompile = r
-        }),
-    )
+    const { engine, resolveCompile } = mockAsyncEngine()
     const onResult = vi.fn()
-    const onStatus = vi.fn()
-    const scheduler = sched(engine, onResult, onStatus, { minDebounceMs: 0 })
+    const scheduler = new CompileScheduler(engine, onResult, vi.fn(), { minDebounceMs: 0 })
 
     // Start first compile (generation 1)
     scheduler.schedule()
@@ -192,17 +176,15 @@ describe('CompileScheduler', () => {
   // --- Adaptive debounce tests ---
 
   it('starts with minDebounceMs when no compile history', () => {
-    const engine = mockEngine()
-    const scheduler = sched(engine, vi.fn(), vi.fn(), { minDebounceMs: 200 })
+    const { scheduler } = setup({ minDebounceMs: 200 })
     expect(scheduler.getDebounceMs()).toBe(200)
   })
 
   it('adapts debounce based on compile time', async () => {
-    const engine = mockEngine(makeResult({ compileTime: 600 }))
-    const onResult = vi.fn()
-    const scheduler = sched(engine, onResult, vi.fn(), {
+    const { onResult, scheduler } = setup({
       minDebounceMs: 150,
       maxDebounceMs: 1000,
+      compileResult: makeResult({ compileTime: 600 }),
     })
 
     // First compile: compileTime=600 → debounce should become 300 (600*0.5)
@@ -210,29 +192,29 @@ describe('CompileScheduler', () => {
     vi.advanceTimersByTime(150)
     await vi.advanceTimersByTimeAsync(0)
 
+    expect(onResult).toHaveBeenCalledTimes(1)
     expect(scheduler.getDebounceMs()).toBe(300)
   })
 
-  it('clamps debounce to min', async () => {
-    const engine = mockEngine(makeResult({ compileTime: 100 }))
-    const scheduler = sched(engine, vi.fn(), vi.fn(), {
+  it.each([
+    { compileTime: 100, expected: 150, label: 'min (100*0.5=50, clamped to 150)' },
+    { compileTime: 5000, expected: 1000, label: 'max (5000*0.5=2500, clamped to 1000)' },
+  ])('clamps debounce to $label', async ({ compileTime, expected }) => {
+    const { scheduler } = setup({
       minDebounceMs: 150,
       maxDebounceMs: 1000,
+      compileResult: makeResult({ compileTime }),
     })
 
     scheduler.schedule()
     vi.advanceTimersByTime(150)
     await vi.advanceTimersByTimeAsync(0)
 
-    // 100 * 0.5 = 50, clamped to 150
-    expect(scheduler.getDebounceMs()).toBe(150)
+    expect(scheduler.getDebounceMs()).toBe(expected)
   })
 
   it('flush immediately fires pending debounce', async () => {
-    const engine = mockEngine()
-    const onResult = vi.fn()
-    const onStatus = vi.fn()
-    const scheduler = sched(engine, onResult, onStatus, { minDebounceMs: 5000 })
+    const { engine, onResult, scheduler } = setup({ minDebounceMs: 5000 })
 
     scheduler.schedule()
     expect(engine.compile).not.toHaveBeenCalled()
@@ -245,25 +227,9 @@ describe('CompileScheduler', () => {
   })
 
   it('flush does nothing if no pending debounce', () => {
-    const engine = mockEngine()
-    const scheduler = sched(engine, vi.fn(), vi.fn())
+    const { engine, scheduler } = setup()
 
     scheduler.flush()
     expect(engine.compile).not.toHaveBeenCalled()
-  })
-
-  it('clamps debounce to max', async () => {
-    const engine = mockEngine(makeResult({ compileTime: 5000 }))
-    const scheduler = sched(engine, vi.fn(), vi.fn(), {
-      minDebounceMs: 150,
-      maxDebounceMs: 1000,
-    })
-
-    scheduler.schedule()
-    vi.advanceTimersByTime(150)
-    await vi.advanceTimersByTimeAsync(0)
-
-    // 5000 * 0.5 = 2500, clamped to 1000
-    expect(scheduler.getDebounceMs()).toBe(1000)
   })
 })
