@@ -175,6 +175,10 @@ function compileBibtexRoutine() {
     }
   }
 
+  /* kpathsea does lstat(argv[0]) to find the program directory.
+     Write a dummy file so the lstat succeeds. */
+  try { FS.writeFile(WORKROOT + "/bibtex", ""); } catch(e) {}
+
   _setMainEntry(allocateString(self.mainfile));
 
   var status;
