@@ -10,7 +10,7 @@ Browser-based LaTeX editor with real-time PDF preview. Monaco editor + pdfTeX WA
 - Real-time PDF preview (PDF.js)
 - Bidirectional SyncTeX navigation — click PDF to jump to source, cursor movement highlights PDF location
 - pdfTeX 1.40.22 running entirely in the browser via WebAssembly
-- LaTeX package support via TexLive-Ondemand server (lazy fetch + service worker cache)
+- LaTeX package support via CloudFront CDN (on-demand fetch + service worker cache)
 - Virtual filesystem for multi-file projects
 - Inline error markers and error log panel
 - Embeddable component API — `new LatexEditor(container)` one-liner
@@ -18,16 +18,12 @@ Browser-based LaTeX editor with real-time PDF preview. Monaco editor + pdfTeX WA
 ## Quick Start
 
 ```bash
-# Full stack (editor + texlive package server)
-docker compose up
-# → http://localhost:5555
-
-# Frontend only (no LaTeX package support)
 npm install
 npm run dev
+# → http://localhost:5173
 ```
 
-Basic documents compile without the texlive server. The server is only needed for LaTeX packages (`\usepackage{...}`) beyond the base format.
+TeX packages (amsmath, geometry, etc.) are fetched on demand from CloudFront CDN — no server setup needed.
 
 ## Embedding
 
@@ -105,11 +101,8 @@ Browser
 │   ├── PDF.js               — PDF rendering, zoom, page navigation
 │   ├── SyncTeX              — bidirectional PDF ↔ source mapping
 │   └── pdfTeX WASM Worker   — compilation in Web Worker
-│         └── fetches packages from TexLive server on demand
+│         └── fetches packages on demand from CloudFront CDN
 └── VirtualFS                — in-memory file system (no IndexedDB)
-
-TexLive Server (Docker, port 5001)
-└── Flask app serving .tfm, .sty, .cls, .fmt files
 ```
 
 Vanilla TypeScript + Vite. No framework. Designed as an embeddable component — the host application owns authentication, storage, and collaboration.
@@ -119,7 +112,7 @@ Vanilla TypeScript + Vite. No framework. Designed as an embeddable component —
 See [docs/develop.md](docs/develop.md) for the full development guide, including:
 
 - WASM engine setup (download or build from source with SyncTeX)
-- TexLive server configuration and version constraints
+- TexLive CDN configuration and version constraints
 - Testing (unit + E2E)
 - Troubleshooting
 
@@ -134,7 +127,6 @@ See [docs/develop.md](docs/develop.md) for the full development guide, including
 | `npm run test:e2e` | E2E tests (Playwright) |
 | `npm run check` | Type check only (tsgo) |
 | `npm run lint` | Lint (Biome) |
-| `docker compose up` | Full stack with texlive server |
 
 ### Key Files
 
@@ -162,4 +154,4 @@ See [docs/develop.md](docs/develop.md) for the full development guide, including
 
 [MIT](LICENSE)
 
-This project includes third-party components under their own licenses — see [LICENSE](LICENSE) for details. Notably, the pdfTeX WASM binary is compiled from [TeX Live](https://tug.org/texlive/) (GPL v2+) and the texlive server build uses [Texlive-Ondemand](https://github.com/SwiftLaTeX/Texlive-Ondemand) (AGPL-3.0).
+This project includes third-party components under their own licenses — see [LICENSE](LICENSE) for details. Notably, the pdfTeX WASM binary is compiled from [TeX Live](https://tug.org/texlive/) (GPL v2+) and the WASM build pipeline uses [Texlive-Ondemand](https://github.com/SwiftLaTeX/Texlive-Ondemand) (AGPL-3.0).
