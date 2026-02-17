@@ -55,7 +55,7 @@ fi
 
 echo "Extracting files from $TEXMF ..."
 rm -rf "$OUT_DIR"
-mkdir -p "$OUT_DIR"/{3,10,11,26,32,33,44}
+mkdir -p "$OUT_DIR"/{3,6,7,10,11,26,32,33,44}
 
 # Helper: copy files, skip duplicates (first-found wins)
 copy_flat() {
@@ -105,6 +105,20 @@ echo "  type 11 (font maps):   $n11 files"
 # Type 44: Encoding files (.enc)
 n44=$(copy_flat "$TEXMF/fonts/enc" "$OUT_DIR/44" ".enc" false)
 echo "  type 44 (encodings):   $n44 files"
+
+# Type 7: BibTeX style files (.bst)
+n7=0
+if [ -d "$TEXMF/bibtex/bst" ]; then
+  n7=$(copy_flat "$TEXMF/bibtex/bst" "$OUT_DIR/7" ".bst" false)
+fi
+echo "  type  7 (BST styles):  $n7 files"
+
+# Type 6: BibTeX support files (.bib — e.g. xampl.bib)
+n6=0
+if [ -d "$TEXMF/bibtex/bib" ]; then
+  n6=$(copy_flat "$TEXMF/bibtex/bib" "$OUT_DIR/6" ".bib" false)
+fi
+echo "  type  6 (BIB support): $n6 files"
 
 total=$(find "$OUT_DIR" -type f | wc -l | tr -d ' ')
 size=$(du -sh "$OUT_DIR" | cut -f1)

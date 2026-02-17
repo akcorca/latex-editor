@@ -1,9 +1,0 @@
-services:
-  app:
-    build: .
-    ports:
-      - "5555:5173"
-    volumes:
-      - ./src:/app/src
-      - ./index.html:/app/index.html
-      - ./public:/app/public

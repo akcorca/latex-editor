@@ -738,53 +738,30 @@ export class LatexEditor {
 
   private async runBibtexChain(): Promise<void> {
     const mainBase = this.mainFile.replace(/\.tex$/, '')
-    console.log('[bibtex] chain started for', mainBase)
 
     const auxContent = await this.engine.readFile(`${mainBase}.aux`)
-    if (!auxContent) {
-      console.log('[bibtex] no .aux file found')
-      return
-    }
+    if (!auxContent) return
 
     // Check for BibTeX markers in .aux
-    if (!auxContent.includes('\\citation{') || !auxContent.includes('\\bibdata{')) {
-      console.log('[bibtex] no \\citation or \\bibdata in .aux')
-      return
-    }
+    if (!auxContent.includes('\\citation{') || !auxContent.includes('\\bibdata{')) return
 
     // Only run bibtex once per session (after confirming .aux has markers)
     this.bibtexDone = true
 
     // Initialize bibtex engine lazily
-    console.log('[bibtex] initializing engine...')
     const engine = await this.ensureBibtexEngine()
-    if (!engine) {
-      console.warn('[bibtex] engine init failed')
-      return
-    }
-    console.log('[bibtex] engine ready')
+    if (!engine) return
 
     // Send files to bibtex engine
     this.sendFilesToBibtex(engine, mainBase, auxContent)
 
     // Run bibtex
-    console.log('[bibtex] compiling...')
     const bibtexResult = await engine.compile(mainBase)
-    console.log('[bibtex] result:', bibtexResult.success ? 'ok' : 'error')
-    if (bibtexResult.log) {
-      console.log('[bibtex] log:', bibtexResult.log)
-    }
-    if (!bibtexResult.success) {
-      return
-    }
+    if (!bibtexResult.success) return
 
     // Read .bbl and write to pdfTeX engine, then recompile
     const bbl = await engine.readFile(`${mainBase}.bbl`)
-    if (!bbl) {
-      console.warn('[bibtex] no .bbl produced')
-      return
-    }
-    console.log('[bibtex] .bbl produced (%d bytes), writing to pdfTeX', bbl.length)
+    if (!bbl) return
 
     this.engine.writeFile(`${mainBase}.bbl`, bbl)
 

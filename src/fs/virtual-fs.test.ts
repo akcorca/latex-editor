@@ -50,13 +50,14 @@ describe('VirtualFS', () => {
       'b.tex',
       'linalg.tex',
       'main.tex',
+      'refs.bib',
     ])
   })
 
   it('tracks modified files', () => {
     const fs = new VirtualFS()
-    // default files start modified (main.tex + 3 chapter files)
-    expect(fs.getModifiedFiles()).toHaveLength(4)
+    // default files start modified (main.tex + 3 chapter files + refs.bib)
+    expect(fs.getModifiedFiles()).toHaveLength(5)
 
     fs.markSynced()
     expect(fs.getModifiedFiles()).toHaveLength(0)

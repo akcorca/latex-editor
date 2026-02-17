@@ -312,6 +312,15 @@ click on any line in the PDF to jump to the corresponding
 source, or press Cmd/Ctrl+Enter in the editor to highlight
 the matching region in the PDF.
 
+For a comprehensive treatment of algebra, see
+Artin~\\cite{artin}; for analysis, Rudin~\\cite{rudin};
+for linear algebra, Axler~\\cite{axler}.
+Hardy and Wright~\\cite{hardywright} cover number theory,
+Feller~\\cite{feller} covers probability,
+Stanley~\\cite{stanley} treats combinatorics,
+Munkres~\\cite{munkres} is the standard topology reference,
+and Strauss~\\cite{strauss} introduces PDEs.
+
 Section~\\ref{sec:algebra} covers algebraic structures.
 Section~\\ref{sec:analysis} treats real and complex analysis.
 Section~\\ref{sec:linalg} discusses linear algebra.
@@ -761,36 +770,79 @@ mathematics:
 \\end{enumerate}
 
 Each section merely scratches the surface of its subject;
-the interested reader is directed to the references below
-for comprehensive treatments.
+the interested reader is directed to the references for
+comprehensive treatments.
 
-\\begin{thebibliography}{99}
-  \\bibitem{artin}
-    M.~Artin, \\emph{Algebra}, 2nd ed.,
-    Pearson, 2011.
-  \\bibitem{rudin}
-    W.~Rudin, \\emph{Principles of Mathematical Analysis}, 3rd ed., McGraw-Hill, 1976.
-  \\bibitem{axler}
-    S.~Axler, \\emph{Linear Algebra Done Right},
-    3rd~ed., Undergraduate Texts in Mathematics, Springer, 2015.
-  \\bibitem{hardywright}
-    G.~H.~Hardy and E.~M.~Wright,
-    \\emph{An Introduction to the Theory of Numbers},
-    6th ed., Oxford, 2008.
-  \\bibitem{feller}
-    W.~Feller, \\emph{An Introduction to Probability
-    Theory and Its Applications}, Vol.~1, 3rd ed.,
-    Wiley, 1968.
-  \\bibitem{stanley}
-    R.~P.~Stanley, \\emph{Enumerative Combinatorics},
-    Vol.~1, 2nd ed., Cambridge, 2012.
-  \\bibitem{munkres}
-    J.~R.~Munkres, \\emph{Topology}, 2nd ed.,
-    Pearson, 2000.
-  \\bibitem{strauss}
-    W.~A.~Strauss, \\emph{Partial Differential
-    Equations: An Introduction}, 2nd ed., Wiley, 2007.
-\\end{thebibliography}
+\\bibliographystyle{plain}
+\\bibliography{refs}
 
 \\end{document}
+`
+
+export const DEFAULT_REFS_BIB = `@book{artin,
+  author    = {Michael Artin},
+  title     = {Algebra},
+  edition   = {2nd},
+  publisher = {Pearson},
+  year      = {2011}
+}
+
+@book{rudin,
+  author    = {Walter Rudin},
+  title     = {Principles of Mathematical Analysis},
+  edition   = {3rd},
+  publisher = {McGraw-Hill},
+  year      = {1976}
+}
+
+@book{axler,
+  author    = {Sheldon Axler},
+  title     = {Linear Algebra Done Right},
+  edition   = {3rd},
+  publisher = {Springer},
+  year      = {2015},
+  series    = {Undergraduate Texts in Mathematics}
+}
+
+@book{hardywright,
+  author    = {G. H. Hardy and E. M. Wright},
+  title     = {An Introduction to the Theory of Numbers},
+  edition   = {6th},
+  publisher = {Oxford University Press},
+  year      = {2008}
+}
+
+@book{feller,
+  author    = {William Feller},
+  title     = {An Introduction to Probability Theory and Its Applications},
+  volume    = {1},
+  edition   = {3rd},
+  publisher = {Wiley},
+  year      = {1968}
+}
+
+@book{stanley,
+  author    = {Richard P. Stanley},
+  title     = {Enumerative Combinatorics},
+  volume    = {1},
+  edition   = {2nd},
+  publisher = {Cambridge University Press},
+  year      = {2012}
+}
+
+@book{munkres,
+  author    = {James R. Munkres},
+  title     = {Topology},
+  edition   = {2nd},
+  publisher = {Pearson},
+  year      = {2000}
+}
+
+@book{strauss,
+  author    = {Walter A. Strauss},
+  title     = {Partial Differential Equations: An Introduction},
+  edition   = {2nd},
+  publisher = {Wiley},
+  year      = {2007}
+}
 `

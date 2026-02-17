@@ -29,6 +29,7 @@ export default defineConfig(({ mode }) => {
         '/texlive': {
           target: env.TEXLIVE_URL,
           changeOrigin: true,
+          secure: false,
           rewrite: (path: string) => path.replace(/^\/texlive/, ''),
         },
       },

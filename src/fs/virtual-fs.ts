@@ -1,5 +1,11 @@
 import type { VirtualFile } from '../types'
-import { DEFAULT_ALGEBRA, DEFAULT_ANALYSIS, DEFAULT_LINALG, DEFAULT_TEX } from './default-project'
+import {
+  DEFAULT_ALGEBRA,
+  DEFAULT_ANALYSIS,
+  DEFAULT_LINALG,
+  DEFAULT_REFS_BIB,
+  DEFAULT_TEX,
+} from './default-project'
 
 interface VirtualFSOptions {
   /** If true, start with no files (skip default main.tex template). */
@@ -16,6 +22,7 @@ export class VirtualFS {
       this.writeFile('algebra.tex', DEFAULT_ALGEBRA)
       this.writeFile('analysis.tex', DEFAULT_ANALYSIS)
       this.writeFile('linalg.tex', DEFAULT_LINALG)
+      this.writeFile('refs.bib', DEFAULT_REFS_BIB)
     }
   }
 

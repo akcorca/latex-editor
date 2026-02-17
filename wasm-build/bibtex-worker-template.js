@@ -100,9 +100,11 @@ function kpse_find_file_impl(nameptr, format, _mustexist) {
 
   if (!self.texlive_endpoint) return 0;
 
+  var remote_url = self.texlive_endpoint + "pdftex/" + cacheKey;
+
   try {
     var xhr = new XMLHttpRequest();
-    xhr.open("GET", self.texlive_endpoint + "pdftex/" + cacheKey, false);
+    xhr.open("GET", remote_url, false);
     xhr.responseType = "arraybuffer";
     xhr.send();
 
