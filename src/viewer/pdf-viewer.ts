@@ -54,9 +54,15 @@ export class PdfViewer {
     return this.lastPdf
   }
 
+  /** Set the download button click handler. */
+  setDownloadHandler(handler: () => void): void {
+    this.downloadBtn.onclick = handler
+  }
+
   private controlsEl!: HTMLElement
   private pageInfo!: HTMLSpanElement
   private pagesContainer!: HTMLElement
+  private downloadBtn!: HTMLButtonElement
 
   private buildLoadingOverlay(): void {
     const overlay = document.createElement('div')
@@ -120,7 +126,13 @@ export class PdfViewer {
     zoomIn.textContent = '+'
     zoomIn.onclick = () => this.zoom(0.25)
 
-    this.controlsEl.append(this.pageInfo, zoomOut, zoomLabel, zoomIn)
+    this.downloadBtn = document.createElement('button')
+    this.downloadBtn.className = 'pdf-download-btn'
+    this.downloadBtn.textContent = 'PDF'
+    this.downloadBtn.title = 'Download PDF'
+    this.downloadBtn.style.display = 'none'
+
+    this.controlsEl.append(this.pageInfo, zoomOut, zoomLabel, zoomIn, this.downloadBtn)
     this.container.appendChild(this.controlsEl)
 
     this.pagesContainer = document.createElement('div')
@@ -178,6 +190,7 @@ export class PdfViewer {
 
     this.removeLoadingOverlay()
     this.controlsEl.style.display = 'flex'
+    this.downloadBtn.style.display = ''
 
     // Clamp current page
     if (this.currentPage > this.pdfDoc.numPages) {

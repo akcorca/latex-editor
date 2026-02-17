@@ -48,7 +48,6 @@ export class LatexEditor {
 
   // --- DOM ---
   private root: HTMLElement
-  private statusEl!: HTMLElement
 
   // --- Components ---
   private engine: SwiftLatexEngine
@@ -329,9 +328,6 @@ export class LatexEditor {
     root.className = 'le-root'
 
     root.innerHTML = `
-      <div class="le-toolbar" id="toolbar">
-        <span class="le-status" id="status">Loading...</span>
-      </div>
       <div class="le-main" id="main-container">
         <div class="le-file-tree panel" id="file-tree-panel"></div>
         <div class="le-divider-left divider"></div>
@@ -351,8 +347,6 @@ export class LatexEditor {
   // ------------------------------------------------------------------
 
   private initComponents(): void {
-    this.statusEl = this.root.querySelector<HTMLElement>('.le-status')!
-
     // PDF Viewer
     const viewerContainer = this.root.querySelector<HTMLElement>('.le-viewer')!
     this.pdfViewer = new PdfViewer(viewerContainer)
@@ -452,14 +446,8 @@ export class LatexEditor {
       },
     })
 
-    // PDF Download button
-    const downloadBtn = document.createElement('button')
-    downloadBtn.textContent = 'PDF'
-    downloadBtn.title = 'Download PDF'
-    downloadBtn.style.cssText =
-      'margin-left:auto;background:#404040;border:none;color:#ccc;padding:2px 8px;cursor:pointer;border-radius:3px;font-size:12px;'
-    downloadBtn.onclick = () => this.downloadPdf()
-    this.root.querySelector<HTMLElement>('.le-toolbar')!.appendChild(downloadBtn)
+    // PDF Download button (in PDF viewer overlay)
+    this.pdfViewer.setDownloadHandler(() => this.downloadPdf())
 
     // Register LSP providers
     this.lspDisposables = registerLatexProviders(this.projectIndex, this.fs)
@@ -489,7 +477,6 @@ export class LatexEditor {
   // ------------------------------------------------------------------
 
   private setStatus(status: AppStatus, detail?: string): void {
-    this.statusEl.className = `le-status ${status}`
     const labels: Record<AppStatus, string> = {
       unloaded: 'Initializing...',
       loading: 'Loading engine...',
@@ -499,7 +486,6 @@ export class LatexEditor {
       rendering: 'Rendering PDF...',
     }
     const label = detail ? `${labels[status]} ${detail}` : labels[status]
-    this.statusEl.textContent = label
     this.pdfViewer.setLoadingStatus(label)
     this.emit('status', { status })
   }
