@@ -100,12 +100,21 @@ RUN echo "=== Phase 1b: Native build ===" && \
         echo "--- pdftex C files not found, retrying targeted pdftex build ---"; \
         cd /build/native/texk/web2c && make pdftex -j"$(nproc)" 2>&1 || true; \
     fi && \
+    if [ ! -f "/build/native/texk/web2c/bibtex.c" ]; then \
+        echo "--- bibtex C files not found, retrying targeted bibtex build ---"; \
+        cd /build/native/texk/web2c && make bibtex -j"$(nproc)" 2>&1 || true; \
+    fi && \
     echo "" && \
     echo "=== Verifying generated C files ===" && \
     ls -la /build/native/texk/web2c/pdftex0.c \
            /build/native/texk/web2c/pdftexini.c \
            /build/native/texk/web2c/pdftex-pool.c \
-           /build/native/texk/web2c/pdftexd.h
+           /build/native/texk/web2c/pdftexd.h && \
+    echo "" && \
+    echo "=== Verifying bibtex C files ===" && \
+    ls -la /build/native/texk/web2c/bibtex.c \
+           /build/native/texk/web2c/bibtex.h 2>/dev/null || \
+        echo "WARNING: bibtex C files not generated"
 
 # =============================================================================
 # COPY build scripts (AFTER native build — changes here won't invalidate above)

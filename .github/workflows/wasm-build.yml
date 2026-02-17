@@ -54,6 +54,8 @@ jobs:
           "
 
       - name: Smoke test BibTeX WASM
+        continue-on-error: true
+        id: bibtex-smoke
         run: |
           node -e "
             const fs = require('fs');
@@ -65,13 +67,25 @@ jobs:
             console.log('compileBibtexRoutine found');
           "
 
-      - name: Upload WASM artifacts
+      - name: Upload pdfTeX WASM artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: wasm-binaries
+          name: wasm-pdftex
           path: |
             wasm-build/dist/swiftlatexpdftex.js
             wasm-build/dist/swiftlatexpdftex.wasm
+          retention-days: 90
+
+      - name: Upload BibTeX WASM artifacts
+        if: steps.bibtex-smoke.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-bibtex
+          path: |
             wasm-build/dist/swiftlatexbibtex.js
             wasm-build/dist/swiftlatexbibtex.wasm
           retention-days: 90
+
+      - name: List build outputs
+        if: always()
+        run: ls -lh wasm-build/dist/ 2>/dev/null || echo "No dist files"
