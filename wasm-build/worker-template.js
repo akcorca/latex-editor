@@ -218,22 +218,22 @@ function writeTexmfCnf() {
         "VFFONTS = .;" + TEXCACHEROOT + "//",
         "TEXFORMATS = .;" + TEXCACHEROOT + "//",
         "TEXPOOL = .;" + TEXCACHEROOT + "//",
-        "% Memory parameters (Optimized for TeX Live 2025)",
-        "main_memory = 8000000",
-        "extra_mem_top = 4000000",
-        "extra_mem_bot = 4000000",
-        "font_mem_size = 8000000",
+        "% Memory parameters (Standard Large Profile for TeX Live 2025)",
+        "main_memory = 12000000",
+        "extra_mem_top = 0",
+        "extra_mem_bot = 0",
+        "font_mem_size = 4000000",
         "pool_size = 5000000",
-        "buf_size = 1000000",
-        "hash_extra = 1000000",
+        "buf_size = 2000000",
+        "hash_extra = 2000000",
         "save_size = 100000",
         "stack_size = 10000",
-        "trie_size = 1000000",
-        "hyph_size = 8191",
+        "trie_size = 1200000",
+        "hyph_size = 16383",
         "max_strings = 500000",
         "string_vacancies = 100000",
-        "nest_size = 500",
-        "param_size = 10000",
+        "nest_size = 1000",
+        "param_size = 20000",
         ""
     ].join("\n");
     FS.writeFile(WORKROOT + "/texmf.cnf", texmfCnf);
@@ -431,6 +431,13 @@ function kpse_find_file_impl(nameptr, format, _mustexist) {
         var arraybuffer = xhr.response;
         // fileid header comes from texlive server; static hosting won't have it
         var fileid = xhr.getResponseHeader("fileid") || reqname;
+        
+        // Ensure standard extensions for known formats if missing
+        if (format === 3 && !fileid.endsWith(".tfm")) fileid += ".tfm";
+        if (format === 6 && !fileid.endsWith(".bib")) fileid += ".bib";
+        if (format === 7 && !fileid.endsWith(".bst")) fileid += ".bst";
+        if (format === 10 && !fileid.endsWith(".fmt")) fileid += ".fmt";
+
         var savepath = TEXCACHEROOT + "/" + fileid;
         var data = new Uint8Array(arraybuffer);
         FS.writeFile(savepath, data);

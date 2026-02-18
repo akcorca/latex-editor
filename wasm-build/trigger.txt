@@ -13,3 +13,4 @@ trigger extreme memory
 trigger fix syntax
 trigger balanced memory
 trigger etex enable
+trigger stable large memory
