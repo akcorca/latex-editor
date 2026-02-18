@@ -437,9 +437,9 @@ function kpse_find_file_impl(nameptr, format, _mustexist) {
             // Avoid double extensions like .tex.tex
             if (reqname.endsWith(exts[i])) continue;
 
-            console.log("[kpse] 404, retrying with " + exts[i] + ": " + reqname);
             var retryXhr = tryFetch(reqname + exts[i]);
             if (retryXhr && retryXhr.status === 200) {
+                console.log("[kpse] Found after retry: " + reqname + exts[i]);
                 xhr = retryXhr;
                 reqname += exts[i];
                 break;
@@ -570,6 +570,19 @@ function compileLaTeXRoutine() {
         prepareExecutionContext();
 
         try { FS.writeFile(WORKROOT + "/pdfetex", ""); } catch(e) {}
+        
+        // Dummy 'nul:' device for TeX
+        try { FS.writeFile(WORKROOT + "/nul:", ""); } catch(e) {}
+        
+        // Inject minimal language.dat to speed up format building (avoids 100+ XHRs)
+        var minLangDat = [
+            "usenglish hyphen.tex",
+            "=usenglishmax",
+            "ukenglish  loadhyph-en-gb.tex",
+            ""
+        ].join("\n");
+        try { FS.writeFile(WORKROOT + "/language.dat", minLangDat); } catch(e) {}
+
         writeTexmfCnf();
 
         // Ensure no stale format file exists in WORKROOT before -ini run.
