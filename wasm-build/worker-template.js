@@ -426,14 +426,17 @@ function kpse_find_file_impl(nameptr, format, _mustexist) {
 
     var xhr = tryFetch(reqname);
 
-    // If 404 and no extension, try common ones
-    if (xhr && xhr.status === 404 && !reqname.includes(".")) {
+    // If 404, try common extensions regardless of current name
+    if (xhr && xhr.status === 404) {
         var exts = [];
-        if (format === 26) exts = [".tex", ".sty", ".cls", ".def", ".cfg"];
+        if (format === 26) exts = [".tex", ".sty", ".cls", ".def", ".cfg", ".ltx"];
         if (format === 3) exts = [".tfm"];
         if (format === 7) exts = [".bst"];
         
         for (var i = 0; i < exts.length; i++) {
+            // Avoid double extensions like .tex.tex
+            if (reqname.endsWith(exts[i])) continue;
+
             console.log("[kpse] 404, retrying with " + exts[i] + ": " + reqname);
             var retryXhr = tryFetch(reqname + exts[i]);
             if (retryXhr && retryXhr.status === 200) {
