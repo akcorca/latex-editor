@@ -195,9 +195,10 @@ EMCC_FLAGS = \
 	-sINVOKE_RUN=0 \
 	-sMODULARIZE=0 \
 	-sEXPORTED_FUNCTIONS='["_compileLaTeX","_compileBibtex","_compileFormat","_main","_setMainEntry","_malloc","_free","_scanHashTable"]' \
-	-sEXPORTED_RUNTIME_METHODS='["cwrap","FS","UTF8ToString","stringToUTF8","lengthBytesUTF8","HEAPU8"]' \
-	-sINITIAL_MEMORY=268435456 \
-	-sWASM=1 \
+	        -sEXPORTED_RUNTIME_METHODS='["cwrap","FS","UTF8ToString","stringToUTF8","lengthBytesUTF8","HEAPU8"]' \
+	        -sINITIAL_MEMORY=536870912 \
+	        -sWASM=1 \
+	
 	--js-library $(JSLIB) \
 	-Wl,--wrap=kpse_find_file
 

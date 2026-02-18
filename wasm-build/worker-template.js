@@ -218,18 +218,18 @@ function writeTexmfCnf() {
         "VFFONTS = .;" + TEXCACHEROOT + "//",
         "TEXFORMATS = .;" + TEXCACHEROOT + "//",
         "TEXPOOL = .;" + TEXCACHEROOT + "//",
-        "% Memory parameters",
-        "main_memory = 5000000",
-        "extra_mem_top = 2000000",
-        "extra_mem_bot = 2000000",
-        "font_mem_size = 8000000",
-        "pool_size = 6250000",
-        "buf_size = 200000",
-        "hash_extra = 600000",
-        "save_size = 80000",
-        "stack_size = 5000",
-        "trie_size = 1000000",
-        "hyph_size = 8191",
+        "% Memory parameters (Increased for TeX Live 2025)",
+        "main_memory = 10000000",
+        "extra_mem_top = 5000000",
+        "extra_mem_bot = 5000000",
+        "font_mem_size = 10000000",
+        "pool_size = 12500000",
+        "buf_size = 500000",
+        "hash_extra = 1000000",
+        "save_size = 100000",
+        "stack_size = 10000",
+        "trie_size = 2000000",
+        "hyph_size = 16383",
         "nest_size = 500",
         "param_size = 10000",
         "max_strings = 500000",
@@ -549,7 +549,9 @@ function compileLaTeXRoutine() {
         // If a 2020 format is present, 2025 INITEX will be "stymied".
         try { FS.unlink(WORKROOT + "/pdflatex.fmt"); } catch(e) {}
 
+        console.log("[compile] Invoking INITEX to build base format...");
         var fmtStatus = runMain("pdfetex", ["-ini", "-interaction=nonstopmode", "*pdflatex.ini"]);
+        console.log("[compile] INITEX finished with status: " + fmtStatus);
 
         if (fmtStatus === 0) {
             try {
