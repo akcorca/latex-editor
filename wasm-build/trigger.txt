@@ -17,3 +17,4 @@ trigger stable large memory
 trigger extension retry
 trigger aggressive retry
 trigger min lang build
+trigger getter logic

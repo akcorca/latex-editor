@@ -133,6 +133,8 @@ export class LatexEditor {
 
   private disposed = false
 
+  private lastBuiltFormat: Uint8Array | null = null
+
   // --- Events ---
 
   // biome-ignore lint/suspicious/noExplicitAny: heterogeneous event map
@@ -152,6 +154,7 @@ export class LatexEditor {
 
     const engineOpts: import('./engine/swiftlatex-engine').SwiftLatexEngineOptions = {
       assetBaseUrl: this.assetBaseUrl,
+      skipFormatPreload: !!this.opts.skipFormatPreload,
     }
 
     if (this.opts.texliveUrl) engineOpts.texliveUrl = this.opts.texliveUrl
@@ -437,6 +440,11 @@ export class LatexEditor {
 
   getPdf(): Uint8Array | null {
     return this.pdfViewer?.getLastPdf() ?? null
+  }
+
+  /** Get the raw .fmt data if it was built during this session. */
+  getLastBuiltFormat(): Uint8Array | null {
+    return this.lastBuiltFormat
   }
 
   // --- Events ---
@@ -1125,6 +1133,7 @@ export class LatexEditor {
     this.updateEngineMetadata(result)
 
     if (result.format) {
+      this.lastBuiltFormat = result.format
       this.downloadFormat(result.format)
     }
 

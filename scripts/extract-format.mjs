@@ -1,38 +1,17 @@
 #!/usr/bin/env node
-// Extract a compatible .fmt by running the app in a real browser (Playwright).
-// The WASM worker builds the format on first compile and auto-downloads it.
-//
-// Prerequisites:
-//   - texlive server running (docker compose up texlive)
-//   - npx playwright install chromium (if not already)
-//
-// Usage: node scripts/extract-format.mjs
-//
-// The script starts Vite dev server, opens the app in Chromium, waits for
-// the format to be built and downloaded, then copies it to public/swiftlatex/.
+// Robustly extract .fmt by pulling binary data directly from the browser context.
 
 import { chromium } from '@playwright/test'
 import { createServer } from 'vite'
-import { copyFileSync, existsSync } from 'fs'
+import { writeFileSync, mkdirSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
-import { homedir } from 'os'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = join(__dirname, '..')
 const outPath = join(root, 'public/swiftlatex/swiftlatexpdftex.fmt')
 
 async function main() {
-  // Check texlive server
-  try {
-    const r = await fetch('http://localhost:5001/pdftex/10/swiftlatexpdftex.fmt')
-    if (!r.ok) throw new Error(`status ${r.status}`)
-  } catch (e) {
-    console.error('Texlive server not responding at localhost:5001.')
-    console.error('Run: docker compose up texlive')
-    process.exit(1)
-  }
-
   console.log('Starting Vite dev server...')
   const server = await createServer({ root, configFile: join(root, 'vite.config.ts') })
   await server.listen()
@@ -42,38 +21,66 @@ async function main() {
 
   console.log('Launching browser...')
   const browser = await chromium.launch()
-  const context = await browser.newContext({ acceptDownloads: true })
-  const page = await context.newPage()
-
-  // Listen for the auto-download of swiftlatexpdftex.fmt
-  const downloadPromise = page.waitForEvent('download', { timeout: 300_000 })
+  const page = await browser.newPage()
 
   page.on('console', msg => {
-    const text = msg.text()
-    if (text.includes('[compile]') || text.includes('[loadformat]') || text.includes('[engine]')) {
-      console.log(`  [browser] ${text}`)
+    const text = msg.text();
+    // Only log essential browser messages to keep output clean
+    if (text.includes('[compile]') || text.includes('[kpse]') || text.includes('failed')) {
+      console.log(`  [browser] ${text}`);
     }
   })
 
-  console.log('Opening app — waiting for format build (this takes ~30-60s)...')
+  await page.addInitScript(() => {
+    window.__LATEX_EDITOR_OPTS = {
+      skipFormatPreload: true,
+      serviceWorker: false,
+      texliveUrl: 'https://dwrg2en9emzif.cloudfront.net/2025/'
+    };
+  });
+
   await page.goto(url)
 
-  // Wait for the format download
-  const download = await downloadPromise
-  const downloadPath = join(root, 'public/swiftlatex', download.suggestedFilename())
-  await download.saveAs(downloadPath)
+  console.log('Waiting for format generation (this takes ~1-2 mins)...');
+  
+  // Polling logic: check if the editor has finished building the format
+  const fmtDataB64 = await page.evaluate(async () => {
+    return new Promise((resolve) => {
+      const start = Date.now();
+      const check = setInterval(() => {
+        // window.__latexEditor is exposed in main.ts after init()
+        const editor = window.__latexEditor;
+        if (editor) {
+          const fmt = editor.getLastBuiltFormat();
+          if (fmt) {
+            clearInterval(check);
+            // Convert Uint8Array to base64 for transport
+            const binary = Array.from(fmt).map(b => String.fromCharCode(b)).join('');
+            resolve(btoa(binary));
+          }
+        }
+        
+        // Timeout after 5 minutes
+        if (Date.now() - start > 300000) {
+          clearInterval(check);
+          resolve(null);
+        }
+      }, 1000);
+    });
+  });
 
-  console.log(`Format saved to ${downloadPath} (${(await download.createReadStream()).readableLength ?? '?'} bytes)`)
-
-  // Verify
-  if (existsSync(outPath)) {
-    const { size } = await import('fs').then(fs => fs.statSync(outPath))
-    console.log(`Verified: ${outPath} — ${size} bytes`)
+  if (fmtDataB64) {
+    const buffer = Buffer.from(fmtDataB64, 'base64');
+    mkdirSync(dirname(outPath), { recursive: true });
+    writeFileSync(outPath, buffer);
+    console.log(`\nSUCCESS: Format saved to ${outPath} (${buffer.length} bytes)`);
+  } else {
+    console.error('\nFAILED: Timeout or error while building format.');
+    process.exit(1);
   }
 
   await browser.close()
   await server.close()
-  console.log('Done! Commit the updated .fmt file.')
 }
 
 main().catch(e => {
