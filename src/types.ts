@@ -7,6 +7,8 @@ export interface CompileResult {
   compileTime: number
   /** Raw synctex data (uncompressed or gzipped) from pdfTeX -synctex=1 */
   synctex: Uint8Array | null
+  /** Raw .fmt format file data (if built during this session) */
+  format?: Uint8Array | undefined
   /** Whether a cached preamble format was used for this compilation */
   preambleSnapshot?: boolean
   /** Control sequences from pdfTeX hash table (package + user commands) */

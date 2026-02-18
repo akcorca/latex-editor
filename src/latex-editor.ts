@@ -1124,11 +1124,15 @@ export class LatexEditor {
 
     this.updateEngineMetadata(result)
 
+    if (result.format) {
+      this.downloadFormat(result.format)
+    }
+
     if (result.success && result.pdf) {
       this.handleSuccessfulCompile(result, detail)
     } else {
       perf.end('total')
-
+      console.error('[engine] compilation failed. memlog:', result.log)
       this.setStatus(result.errors.length > 0 ? 'error' : 'ready')
     }
 
@@ -1436,6 +1440,16 @@ export class LatexEditor {
 
     a.click()
 
+    URL.revokeObjectURL(url)
+  }
+
+  private downloadFormat(data: Uint8Array): void {
+    const blob = new Blob([data.buffer as ArrayBuffer], { type: 'application/octet-stream' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'swiftlatexpdftex.fmt'
+    a.click()
     URL.revokeObjectURL(url)
   }
 

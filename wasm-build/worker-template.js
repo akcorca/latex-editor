@@ -344,6 +344,8 @@ function buildPreambleFormat(preambleText) {
         // Check build log for errors that indicate a broken format
         if (self.memlog.includes("Fatal format file error") ||
             self.memlog.includes("I can\\'t go on")) {
+            console.error("[preamble] build log contains fatal errors:");
+            console.log(self.memlog);
             return null;
         }
         try {
@@ -353,6 +355,9 @@ function buildPreambleFormat(preambleText) {
             }
             return fmt;
         } catch(e) { return null; }
+    } else {
+        console.error("[preamble] format build failed. log below:");
+        console.log(self.memlog);
     }
     return null;
 }
@@ -540,6 +545,8 @@ function compileLaTeXRoutine() {
                 console.error("[compile] Format build succeeded but can't read output: " + e);
             }
         } else {
+            console.error("[compile] Initial format build failed. log below:");
+            console.log(self.memlog);
             if (self._fmtFallback) {
                 self._fmtData = self._fmtFallback;
             }
