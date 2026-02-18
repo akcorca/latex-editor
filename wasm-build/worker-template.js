@@ -534,6 +534,10 @@ function compileLaTeXRoutine() {
         try { FS.writeFile(WORKROOT + "/pdfetex", ""); } catch(e) {}
         writeTexmfCnf();
 
+        // Ensure no stale format file exists in WORKROOT before -ini run.
+        // If a 2020 format is present, 2025 INITEX will be "stymied".
+        try { FS.unlink(WORKROOT + "/pdflatex.fmt"); } catch(e) {}
+
         var fmtStatus = runMain("pdfetex", ["-ini", "-interaction=nonstopmode", "*pdflatex.ini"]);
 
         if (fmtStatus === 0) {
@@ -541,6 +545,7 @@ function compileLaTeXRoutine() {
                 self._fmtData = FS.readFile(WORKROOT + "/pdflatex.fmt", { encoding: "binary" });
                 self._fmtBuiltThisSession = true;
                 self._fmtIsNative = true;
+                console.log("[compile] Initial format built successfully.");
             } catch(e) {
                 console.error("[compile] Format build succeeded but can't read output: " + e);
             }

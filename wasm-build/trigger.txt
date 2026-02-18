@@ -1,2 +1,3 @@
 trigger
 trigger debug
+trigger clean ini
