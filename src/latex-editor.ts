@@ -1133,8 +1133,21 @@ export class LatexEditor {
     this.updateEngineMetadata(result)
 
     if (result.format) {
+      console.log('[main] Format data received from engine, size:', result.format.length)
       this.lastBuiltFormat = result.format
       this.downloadFormat(result.format)
+
+      // Auto-upload if in extraction mode (used by scripts/extract-format.mjs)
+      if (this.opts.skipFormatPreload) {
+        console.log('[main] Uploading format data to extraction server...')
+        fetch('/upload-fmt', {
+          method: 'POST',
+          body: result.format as any,
+          headers: { 'Content-Type': 'application/octet-stream' },
+        })
+          .then(() => console.log('[main] Upload complete'))
+          .catch((err) => console.error('[main] Upload failed:', err))
+      }
     }
 
     if (result.success && result.pdf) {

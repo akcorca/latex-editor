@@ -7,6 +7,8 @@ export interface SwiftLatexEngineOptions {
   assetBaseUrl?: string
   /** TexLive server endpoint. Defaults to `${location.origin}${BASE_URL}texlive/`. */
   texliveUrl?: string
+  /** If true, do not attempt to preload the base .fmt file. */
+  skipFormatPreload?: boolean
 }
 
 /** Counter for unique message IDs. */
@@ -41,11 +43,13 @@ interface WorkerMessage {
 
 export class SwiftLatexEngine extends BaseWorkerEngine<WorkerMessage> {
   private formatPath: string
+  private skipFormatPreload: boolean
 
   constructor(options?: SwiftLatexEngineOptions) {
     const base = options?.assetBaseUrl ?? import.meta.env.BASE_URL
     super(`${base}swiftlatex/swiftlatexpdftex.js`, options?.texliveUrl ?? null)
     this.formatPath = `${base}swiftlatex/swiftlatexpdftex.fmt`
+    this.skipFormatPreload = !!options?.skipFormatPreload
   }
 
   async init(): Promise<void> {
@@ -75,10 +79,13 @@ export class SwiftLatexEngine extends BaseWorkerEngine<WorkerMessage> {
     this.worker!.postMessage({ cmd: 'settexliveurl', url: texliveUrl })
 
     // Pre-load format and pdftex.map in parallel
-    await Promise.all([
-      this.preloadFormat(),
+    const preloads: Promise<void>[] = [
       this.preloadTexliveFile(11, 'pdftex.map', `${texliveUrl}pdftex/11/pdftex.map`),
-    ])
+    ]
+    if (!this.skipFormatPreload) {
+      preloads.push(this.preloadFormat())
+    }
+    await Promise.all(preloads)
   }
 
   /**
@@ -114,6 +121,21 @@ export class SwiftLatexEngine extends BaseWorkerEngine<WorkerMessage> {
 
     // Dispatch by cmd (legacy protocol for compile/readfile)
     if (data.cmd) {
+      if (data.cmd === 'formatbuilt' && data.data) {
+        // Special case: format was built and sent back early.
+        // We trigger a virtual compile result or just a custom event.
+        const formatData = new Uint8Array(data.data as unknown as ArrayBuffer)
+        console.log('[engine] Received formatbuilt early, size:', formatData.length)
+
+        // Expose it so LatexEditor can grab it
+        ;(this as any)._earlyFormat = formatData
+
+        // Manual notification to any listeners (like extract-format script)
+        const event = new CustomEvent('earlyformat', { detail: formatData })
+        window.dispatchEvent(event)
+        return
+      }
+
       const key = `cmd:${data.cmd}`
       const cb = this.pendingResponses.get(key)
       if (cb) {
@@ -266,6 +288,7 @@ export class SwiftLatexEngine extends BaseWorkerEngine<WorkerMessage> {
     const success = data.result === 'ok'
     const pdf = success && data.pdf ? new Uint8Array(data.pdf) : null
     const synctex = success && data.synctex ? new Uint8Array(data.synctex) : null
+    const format = success && data.format ? new Uint8Array(data.format) : undefined
     const errors = parseTexErrors(log)
     const preambleSnapshot = !!data.preambleSnapshot
 
@@ -276,6 +299,7 @@ export class SwiftLatexEngine extends BaseWorkerEngine<WorkerMessage> {
       errors,
       compileTime,
       synctex,
+      format,
       preambleSnapshot,
     }
     if (data.engineCommands) {
