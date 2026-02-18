@@ -479,8 +479,12 @@ export class LatexEditor {
     this.editor.onDidChangeCursorPosition(() => {
       if (this.switchingModel) return
       const line = this.editor.getPosition()?.lineNumber
-      if (!line || (line === this.lastForwardLine && this.currentFile === this.lastForwardFile))
-        return
+      if (!line) return
+
+      // Update outline highlight
+      this.outline.setActiveLine(line)
+
+      if (line === this.lastForwardLine && this.currentFile === this.lastForwardFile) return
       this.lastForwardLine = line
       this.lastForwardFile = this.currentFile
       if (this.forwardSearchTimer) clearTimeout(this.forwardSearchTimer)

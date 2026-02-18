@@ -371,6 +371,12 @@ body {
   color: #fff;
 }
 
+.outline-item.active {
+  background: #37373d;
+  color: #fff;
+  box-shadow: inset 2px 0 0 #007acc;
+}
+
 .outline-empty {
   padding: 12px;
   font-size: 12px;
