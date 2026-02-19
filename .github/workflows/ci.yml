@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   build:
@@ -16,13 +17,28 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 24, cache: npm }
       - run: npm ci
+      - name: Download latest WASM engine
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          workflow: wasm-build.yml
+          name: wasm-pdftex
+          path: public/swiftlatex/2025
+          search_artifacts: true
+          if_no_artifact_found: warn
+      - name: Download latest BibTeX WASM
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          workflow: wasm-build.yml
+          name: wasm-bibtex
+          path: public/swiftlatex/2025
+          search_artifacts: true
+          if_no_artifact_found: warn
       - run: npm run lint
       - run: npx tsgo --noEmit
       - run: npm run test
       - run: npx vite build
         env:
           BASE_URL: /${{ github.event.repository.name }}/
-          VITE_TEXLIVE_URL: https://dwrg2en9emzif.cloudfront.net/
       - uses: actions/upload-pages-artifact@v3
         if: github.ref == 'refs/heads/main'
         with: { path: dist }
