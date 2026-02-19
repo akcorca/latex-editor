@@ -55,6 +55,8 @@ export interface LatexEditorOptions {
    * Defaults to false for backward compatibility.
    */
   headless?: boolean
+  /** If true, do not attempt to preload the base .fmt file from the server. */
+  skipFormatPreload?: boolean
 }
 
 export interface LatexEditorEventMap {

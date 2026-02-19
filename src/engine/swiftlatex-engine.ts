@@ -121,21 +121,6 @@ export class SwiftLatexEngine extends BaseWorkerEngine<WorkerMessage> {
 
     // Dispatch by cmd (legacy protocol for compile/readfile)
     if (data.cmd) {
-      if (data.cmd === 'formatbuilt' && data.data) {
-        // Special case: format was built and sent back early.
-        // We trigger a virtual compile result or just a custom event.
-        const formatData = new Uint8Array(data.data as unknown as ArrayBuffer)
-        console.log('[engine] Received formatbuilt early, size:', formatData.length)
-
-        // Expose it so LatexEditor can grab it
-        ;(this as any)._earlyFormat = formatData
-
-        // Manual notification to any listeners (like extract-format script)
-        const event = new CustomEvent('earlyformat', { detail: formatData })
-        window.dispatchEvent(event)
-        return
-      }
-
       const key = `cmd:${data.cmd}`
       const cb = this.pendingResponses.get(key)
       if (cb) {

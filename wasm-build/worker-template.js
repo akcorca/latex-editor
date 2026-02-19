@@ -597,21 +597,10 @@ function compileLaTeXRoutine() {
 
         if (fmtStatus === 0) {
             try {
-                var builtFmt = FS.readFile(WORKROOT + "/pdflatex.fmt", { encoding: "binary" });
                 self._fmtData = builtFmt;
                 self._fmtBuiltThisSession = true;
                 self._fmtIsNative = true;
                 console.log("[compile] Initial format built successfully.");
-                
-                // CRITICAL: Send the format data back IMMEDIATELY
-                // This ensures we get the data even if subsequent steps cause a Fatal Error.
-                var fmtCopy = new Uint8Array(builtFmt);
-                self.postMessage({
-                    "cmd": "formatbuilt",
-                    "result": "ok",
-                    "data": fmtCopy.buffer
-                }, [fmtCopy.buffer]);
-
             } catch(e) {
                 console.error("[compile] Format build succeeded but can't read output: " + e);
             }

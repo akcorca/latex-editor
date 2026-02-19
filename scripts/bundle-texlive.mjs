@@ -16,13 +16,18 @@ const root = join(__dirname, '..')
 const bundleDir = join(root, 'public/texlive')
 
 async function main() {
-  // Check texlive server
-  try {
-    const r = await fetch('http://localhost:5001/pdftex/26/article.cls')
-    if (!r.ok) throw new Error(`status ${r.status}`)
-  } catch {
-    console.error('Texlive server not responding. Run: docker compose up texlive')
-    process.exit(1)
+  const texliveUrl = process.env.VITE_TEXLIVE_URL || 'http://localhost:5001/'
+  const isCloudFront = texliveUrl.includes('cloudfront.net')
+
+  // Check texlive server (unless cloudfront)
+  if (!isCloudFront) {
+    try {
+      const r = await fetch(texliveUrl + 'pdftex/26/article.cls')
+      if (!r.ok) throw new Error(`status ${r.status}`)
+    } catch {
+      console.error('Texlive server not responding. Run: docker compose up texlive')
+      process.exit(1)
+    }
   }
 
   console.log('Starting Vite dev server...')
@@ -32,18 +37,23 @@ async function main() {
   const url = `http://localhost:${addr.port}`
 
   const browser = await chromium.launch()
-  const page = await browser.newPage()
+  const context = await browser.newContext({
+    offline: false,
+    javaScriptEnabled: true
+  })
+  const page = await context.newPage()
 
   // Capture all texlive responses (including from Web Workers)
   const captured = new Map()
   page.on('response', async (response) => {
     const reqUrl = response.url()
-    if (!reqUrl.includes('/texlive/')) return
+    // Pattern matches both local /texlive/ and CloudFront /2025/
+    if (!reqUrl.includes('/texlive/') && !reqUrl.includes('/2025/')) return
     if (response.status() !== 200) return
 
     try {
       const body = await response.body()
-      const path = reqUrl.replace(/.*\/texlive\//, '')
+      const path = reqUrl.replace(/.*\/pdftex\//, 'pdftex/')
       if (!captured.has(path)) {
         captured.set(path, body)
       }
@@ -53,20 +63,25 @@ async function main() {
   let compiled = false
   page.on('console', msg => {
     const text = msg.text()
-    if (text.includes('ExitStatus caught, code=0')) compiled = true
+    if (text.includes('ExitStatus caught, code=0') || text.includes('preamble HIT')) compiled = true
     if (text.includes('[compile]') && !text.includes('memlog')) {
-      console.log(`  ${text}`)
+      console.log(`  [browser] ${text}`)
     }
   })
 
   console.log('Opening app — waiting for compilation...')
+  // Force clean state via init script
+  await page.addInitScript(() => {
+    window.__LATEX_EDITOR_OPTS = {
+      serviceWorker: false // Disable SW to ensure clean network requests
+    };
+  });
+
   await page.goto(url)
 
-  // Wait for two successful compilations (format build + actual compile + recompile)
+  // Wait for at least one successful compilation
   const deadline = Date.now() + 180_000
-  let compileCount = 0
-  while (compileCount < 2 && Date.now() < deadline) {
-    if (compiled) { compileCount++; compiled = false }
+  while (!compiled && Date.now() < deadline) {
     await new Promise(r => setTimeout(r, 500))
   }
 

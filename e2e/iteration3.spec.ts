@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-const APP_URL = 'http://localhost:5173'
+const APP_URL = 'http://localhost:6001'
 
 test.describe('Iteration 3: PDF ↔ Source Jump', () => {
   test.beforeEach(async ({ page }) => {

@@ -8,7 +8,7 @@ This guide is for developers contributing to the `latex-editor` codebase.
 npm install
 npm run download-engine   # Download WASM engine (first time only)
 npm run dev               # Start dev server
-# App: http://localhost:5173
+# App: http://localhost:6001
 ```
 
 ## Prerequisites
@@ -20,7 +20,7 @@ npm run dev               # Start dev server
 
 | Command | Description |
 |---------|-------------|
-| `npm run dev` | Vite dev server (port 5173) |
+| `npm run dev` | Vite dev server (port 6001) |
 | `npm run build` | Production build (SDK + standalone app) |
 | `npm run build:lib` | SDK-only build (ES module + CSS) |
 | `npm run check` | TypeScript type check |
@@ -46,6 +46,6 @@ npm run test
 ### E2E Tests
 We use **Playwright**. These verify the full compilation loop, SyncTeX, and BibTeX integration.
 ```bash
-# Requires dev server running at port 5173
+# Requires dev server running at port 6001
 npm run test:e2e
 ```
