@@ -15,11 +15,10 @@
 \usepackage{subcaption}
 \usepackage[section]{placeins}
 \usepackage{listings}
-\usepackage[expansion=false]{microtype}
+\usepackage{microtype}
 \usepackage{hyphenat}
 \usepackage{tabularx}
-\usepackage[backend=biber,style=ieee]{biblatex}
-\addbibresource{refs.bib}
+\usepackage{cite} % Standard citation package
 
 \lstset{
     breaklines=true,        % 줄바꿈 허용
@@ -782,23 +781,6 @@ Future research directions include improving inference efficiency for real-time 
 % \bibitem {LSTM} Hochreiter, Sepp, and Jürgen Schmidhuber. ``Long short-term memory.'' Neural computation 9.8 (1997): 1735-1780.
 % \bibitem {pure} Hardy, Godfrey Harold. Course of pure mathematics. Courier Dover Publications, 2018.
 % \end{thebibliography}
-\printbibliography
-% \vspace{1cm}
-
-% \normalsize
-% References are a detailed list of sources that are cited in your thesis/dissertation. A bibliography is a detailed list of references cited in your thesis/dissertation plus background or other material you have read but have not actually cited.
-
-% References should be prepared in a consistent format using bibliographic management tools (Endnote, Mendeley, etc.) in the order of author name or citation according to your academic field.
-
-
-% Bibliographic management tools
-% \begin{itemize}
-% \item\url{https://library.korea.ac.kr/research/writing-guide/endnote/}
-% \item\url{https://library.korea.ac.kr/research/writing-guide/mendeley/}
-% \end{itemize}
-
-% %%% the index chapter
-% \newpage
-% \addcontentsline{toc}{chapter}{Index}
-% \printindex
+\bibliographystyle{ieeetr} % IEEE Transaction style
+\bibliography{refs}
 \end{document}

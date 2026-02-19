@@ -81,12 +81,13 @@ export class PdfViewer {
     if (text) text.textContent = status
     const fill = this.loadingOverlay.querySelector<HTMLElement>('.pdf-loading-bar-fill')
     if (fill) {
-      const widths: Record<string, string> = {
-        'Loading engine...': '20%',
-        'Compiling...': '50%',
-        'Rendering PDF...': '80%',
-      }
-      fill.style.width = widths[status] ?? fill.style.width
+      if (status.includes('Loading engine')) fill.style.width = '20%'
+      else if (status.includes('fetching')) {
+        // Incrementally increase bar as we fetch more files
+        const currentWidth = Number.parseFloat(fill.style.width || '20')
+        fill.style.width = `${Math.min(currentWidth + 0.5, 75)}%`
+      } else if (status.includes('Compiling')) fill.style.width = '50%'
+      else if (status.includes('Rendering')) fill.style.width = '80%'
     }
   }
 

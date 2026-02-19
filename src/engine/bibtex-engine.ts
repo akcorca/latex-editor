@@ -4,12 +4,14 @@ import { BaseWorkerEngine, resolveTexliveUrl } from './base-worker-engine'
 interface WorkerMessage {
   result?: string
   cmd?: string
+  file?: string
   log?: string
   data?: string
 }
 
 export class BibtexEngine extends BaseWorkerEngine<WorkerMessage> {
   private version: TexliveVersion
+  public onFileDownload?: (filename: string) => void
 
   constructor(options?: {
     assetBaseUrl?: string
@@ -41,6 +43,12 @@ export class BibtexEngine extends BaseWorkerEngine<WorkerMessage> {
           }
           return
         }
+
+        if (data.cmd === 'downloading' && data.file) {
+          this.onFileDownload?.(data.file)
+          return
+        }
+
         // Dispatch by cmd
         const key = `cmd:${data.cmd}`
         const cb = this.pendingResponses.get(key)

@@ -32,6 +32,7 @@ interface WorkerMessage {
   result?: string
   cmd?: string
   msgId?: string
+  file?: string
   log?: string
   pdf?: ArrayBuffer
   synctex?: ArrayBuffer
@@ -47,6 +48,9 @@ export class SwiftLatexEngine extends BaseWorkerEngine<WorkerMessage> {
   private formatPath: string
   private skipFormatPreload: boolean
   private version: TexliveVersion
+
+  public onProgress?: (progress: number) => void
+  public onFileDownload?: (filename: string) => void
 
   constructor(options?: SwiftLatexEngineOptions) {
     const base = options?.assetBaseUrl ?? import.meta.env.BASE_URL
@@ -130,6 +134,11 @@ export class SwiftLatexEngine extends BaseWorkerEngine<WorkerMessage> {
 
     // Dispatch by cmd (legacy protocol for compile/readfile)
     if (data.cmd) {
+      if (data.cmd === 'downloading' && data.file) {
+        this.onFileDownload?.(data.file)
+        return
+      }
+
       const key = `cmd:${data.cmd}`
       const cb = this.pendingResponses.get(key)
       if (cb) {

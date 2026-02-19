@@ -167,6 +167,10 @@ export class LatexEditor {
       }
     }
 
+    this.engine.onFileDownload = (filename) => {
+      this.setStatus(this.engine.getStatus() as AppStatus, `fetching ${filename}`)
+    }
+
     // Create VFS
 
     if (this.opts.files) {
@@ -1361,6 +1365,9 @@ export class LatexEditor {
     if (this.opts.texliveUrl) opts.texliveUrl = this.opts.texliveUrl
 
     this.bibtexEngine = new BibtexEngine(opts)
+    this.bibtexEngine.onFileDownload = (filename) => {
+      this.setStatus('compiling', `fetching ${filename}`)
+    }
 
     try {
       await this.bibtexEngine.init()

@@ -111,6 +111,7 @@ function kpse_find_file_impl(nameptr, format, _mustexist) {
 
   // Helper for actual fetch
   function tryFetch(name) {
+    self.postMessage({ "cmd": "downloading", "file": name });
     var url = self.texlive_endpoint + "pdftex/" + format + "/" + name;
     var xhr = new XMLHttpRequest();
     xhr.open("GET", url, false);
