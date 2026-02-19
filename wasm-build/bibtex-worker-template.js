@@ -91,6 +91,15 @@ function allocateString(str) {
 /* ------------------------------------------------------------------ */
 function kpse_find_file_impl(nameptr, format, _mustexist) {
   var reqname = UTF8ToString(nameptr);
+  
+  // Strip prefixes if any
+  if (reqname.startsWith("*") || reqname.startsWith("&")) {
+    reqname = reqname.substring(1);
+  }
+
+  // Only bare filenames
+  if (reqname.includes("/")) return 0;
+
   var cacheKey = format + "/" + reqname;
 
   if (cacheKey in texlive404_cache) return 0;
@@ -100,23 +109,51 @@ function kpse_find_file_impl(nameptr, format, _mustexist) {
 
   if (!self.texlive_endpoint) return 0;
 
-  var remote_url = self.texlive_endpoint + "pdftex/" + cacheKey;
-
-  try {
+  // Helper for actual fetch
+  function tryFetch(name) {
+    var url = self.texlive_endpoint + "pdftex/" + format + "/" + name;
     var xhr = new XMLHttpRequest();
-    xhr.open("GET", remote_url, false);
+    xhr.open("GET", url, false);
+    xhr.timeout = 150000;
     xhr.responseType = "arraybuffer";
-    xhr.send();
+    try {
+      xhr.send();
+      return xhr;
+    } catch(err) { return null; }
+  }
 
-    if (xhr.status === 200 && xhr.response) {
-      fileid++;
-      var savepath = TEXCACHEROOT + "/" + fileid;
-      FS.writeFile(savepath, new Uint8Array(xhr.response));
-      texlive200_cache[cacheKey] = savepath;
-      return allocateString(savepath);
+  var xhr = tryFetch(reqname);
+
+  // If 404, try common extensions
+  if (xhr && xhr.status === 404) {
+    var exts = [];
+    if (format === 26) exts = [".tex", ".sty", ".cls", ".def", ".cfg"];
+    if (format === 6) exts = [".bib"];
+    if (format === 7) exts = [".bst"];
+    
+    for (var i = 0; i < exts.length; i++) {
+      if (reqname.endsWith(exts[i])) continue;
+      var retryXhr = tryFetch(reqname + exts[i]);
+      if (retryXhr && retryXhr.status === 200) {
+        console.log("[bibtex-kpse] Found after retry: " + reqname + exts[i]);
+        xhr = retryXhr;
+        reqname += exts[i];
+        break;
+      }
     }
-  } catch (e) {
-    /* Network error — treat as not found */
+  }
+
+  if (xhr && xhr.status === 200 && xhr.response) {
+    fileid++;
+    var savepath = TEXCACHEROOT + "/" + fileid;
+    // Ensure extension for kpathsea
+    if (format === 6 && !savepath.endsWith(".bib")) savepath += ".bib";
+    if (format === 7 && !savepath.endsWith(".bst")) savepath += ".bst";
+
+    FS.writeFile(savepath, new Uint8Array(xhr.response));
+    texlive200_cache[cacheKey] = savepath;
+    console.log("[bibtex-kpse] Downloaded: " + reqname + " (" + format + ")");
+    return allocateString(savepath);
   }
 
   texlive404_cache[cacheKey] = true;

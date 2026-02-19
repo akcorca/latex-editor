@@ -133,8 +133,6 @@ export class LatexEditor {
 
   private disposed = false
 
-  private lastBuiltFormat: Uint8Array | null = null
-
   // --- Events ---
 
   // biome-ignore lint/suspicious/noExplicitAny: heterogeneous event map
@@ -440,11 +438,6 @@ export class LatexEditor {
 
   getPdf(): Uint8Array | null {
     return this.pdfViewer?.getLastPdf() ?? null
-  }
-
-  /** Get the raw .fmt data if it was built during this session. */
-  getLastBuiltFormat(): Uint8Array | null {
-    return this.lastBuiltFormat
   }
 
   // --- Events ---
@@ -1133,21 +1126,7 @@ export class LatexEditor {
     this.updateEngineMetadata(result)
 
     if (result.format) {
-      console.log('[main] Format data received from engine, size:', result.format.length)
-      this.lastBuiltFormat = result.format
       this.downloadFormat(result.format)
-
-      // Auto-upload if in extraction mode (used by scripts/extract-format.mjs)
-      if (this.opts.skipFormatPreload) {
-        console.log('[main] Uploading format data to extraction server...')
-        fetch('/upload-fmt', {
-          method: 'POST',
-          body: result.format as any,
-          headers: { 'Content-Type': 'application/octet-stream' },
-        })
-          .then(() => console.log('[main] Upload complete'))
-          .catch((err) => console.error('[main] Upload failed:', err))
-      }
     }
 
     if (result.success && result.pdf) {
@@ -1244,11 +1223,15 @@ export class LatexEditor {
   }
 
   private maybeRecompile(result: CompileResult): void {
-    if (
-      !this.pendingRecompile &&
-      result.success &&
-      result.log?.includes('Rerun to get cross-references right')
-    ) {
+    const log = result.log || ''
+    const needsRerun =
+      log.includes('Rerun to get cross-references right') ||
+      log.includes('Rerun to get citations correct') ||
+      log.includes('Rerun LaTeX') ||
+      log.includes('Label(s) may have changed. Rerun')
+
+    if (!this.pendingRecompile && result.success && needsRerun) {
+      console.log('[main] Triggering automated rerun based on log message')
       this.pendingRecompile = true
 
       this.engine.compile().then((r) => {

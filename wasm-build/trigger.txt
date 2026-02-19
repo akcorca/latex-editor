@@ -21,3 +21,4 @@ trigger getter logic
 trigger early format build
 trigger fix types
 trigger fix types again
+trigger bibtex and rerun fix
