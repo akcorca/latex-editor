@@ -69,9 +69,12 @@ export class BibtexEngine extends BaseWorkerEngine<WorkerMessage> {
     })
   }
 
-  writeFile(path: string, content: string | Uint8Array): void {
+  async writeFile(path: string, content: string | Uint8Array): Promise<void> {
     if (!this.worker) return
-    this.worker.postMessage({ cmd: 'writefile', url: path, src: content })
+    await this.postMessageWithResponse(
+      { cmd: 'writefile', url: path, src: content },
+      'cmd:writefile',
+    )
   }
 
   mkdir(path: string): void {
@@ -85,10 +88,10 @@ export class BibtexEngine extends BaseWorkerEngine<WorkerMessage> {
     }
     this.status = 'compiling'
 
-    const data = await new Promise<WorkerMessage>((resolve) => {
-      this.pendingResponses.set('cmd:compile', resolve)
-      this.worker!.postMessage({ cmd: 'compilebibtex', url: auxBaseName })
-    })
+    const data = await this.postMessageWithResponse(
+      { cmd: 'compilebibtex', url: auxBaseName },
+      'cmd:compile',
+    )
 
     this.status = 'ready'
     return {
@@ -99,12 +102,7 @@ export class BibtexEngine extends BaseWorkerEngine<WorkerMessage> {
 
   async readFile(path: string): Promise<string | null> {
     if (!this.worker) return null
-
-    const data = await new Promise<WorkerMessage>((resolve) => {
-      this.pendingResponses.set('cmd:readfile', resolve)
-      this.worker!.postMessage({ cmd: 'readfile', url: path })
-    })
-
+    const data = await this.postMessageWithResponse({ cmd: 'readfile', url: path }, 'cmd:readfile')
     return data.result === 'ok' ? (data.data ?? null) : null
   }
 }

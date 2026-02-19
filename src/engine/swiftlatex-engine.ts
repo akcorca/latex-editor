@@ -16,20 +16,10 @@ export interface SwiftLatexEngineOptions {
 /** Counter for unique message IDs. */
 let nextMsgId = 1
 
-/** Outgoing messages to the WASM worker. */
-type WorkerOutMessage =
-  | { cmd: 'compilelatex' }
-  | { cmd: 'readfile'; url: string }
-  | { cmd: 'loadformat'; data: ArrayBuffer }
-  | { cmd: 'preloadtexlive'; format: number; filename: string; data: ArrayBuffer; msgId: string }
-  | { cmd: 'settexliveurl'; url: string }
-  | { cmd: 'writefile'; url: string; src: string | Uint8Array }
-  | { cmd: 'mkdir'; url: string }
-  | { cmd: 'setmainfile'; url: string }
-
 /** Incoming response message from the WASM worker. */
 interface WorkerMessage {
   result?: string
+  status?: number
   cmd?: string
   msgId?: string
   file?: string
@@ -241,22 +231,6 @@ export class SwiftLatexEngine extends BaseWorkerEngine<WorkerMessage> {
     return result.buffer
   }
 
-  /** Send a message to the worker and wait for a response keyed by responseKey. */
-  private postMessageWithResponse(
-    msg: WorkerOutMessage,
-    responseKey: string,
-    transferables?: Transferable[],
-  ): Promise<WorkerMessage> {
-    return new Promise<WorkerMessage>((resolve) => {
-      this.pendingResponses.set(responseKey, resolve)
-      if (transferables?.length) {
-        this.worker!.postMessage(msg, transferables)
-      } else {
-        this.worker!.postMessage(msg)
-      }
-    })
-  }
-
   mkdir(path: string): void {
     this.checkInitialized()
     this.worker!.postMessage({ cmd: 'mkdir', url: path })
@@ -288,9 +262,11 @@ export class SwiftLatexEngine extends BaseWorkerEngine<WorkerMessage> {
     this.status = 'ready'
     const compileTime = performance.now() - start
     const log = data.log || ''
-    const success = data.result === 'ok'
-    const pdf = success && data.pdf ? new Uint8Array(data.pdf) : null
-    const synctex = success && data.synctex ? new Uint8Array(data.synctex) : null
+    // pdfTeX status 0 is success, 1 is warnings/non-fatal errors.
+    // Both can produce valid PDF output.
+    const success = data.result === 'ok' && (data.status === 0 || data.status === 1)
+    const pdf = data.result === 'ok' || data.pdf ? new Uint8Array(data.pdf!) : null
+    const synctex = data.result === 'ok' || data.synctex ? new Uint8Array(data.synctex!) : null
     const format = success && data.format ? new Uint8Array(data.format) : undefined
     const errors = parseTexErrors(log)
     const preambleSnapshot = !!data.preambleSnapshot

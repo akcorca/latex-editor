@@ -35,9 +35,10 @@ async function start() {
     ]
 
     files = {}
+    const timestamp = Date.now()
     await Promise.all(
       fileList.map(async (name) => {
-        const resp = await fetch(`${import.meta.env.BASE_URL}sample/${name}`)
+        const resp = await fetch(`${import.meta.env.BASE_URL}sample/${name}?t=${timestamp}`)
         if (resp.ok) {
           const isBinary = /\.(png|jpg|jpeg|gif|pdf)$/i.test(name)
           files![name] = isBinary ? new Uint8Array(await resp.arrayBuffer()) : await resp.text()

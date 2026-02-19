@@ -1278,9 +1278,11 @@ export class LatexEditor {
       log.includes('Rerun to get cross-references right') ||
       log.includes('Rerun to get citations correct') ||
       log.includes('Rerun LaTeX') ||
-      log.includes('Label(s) may have changed. Rerun')
+      log.includes('Label(s) may have changed. Rerun') ||
+      log.includes('Please (re)run Biber') ||
+      log.includes('Please (re)run BibTeX')
 
-    if (!this.pendingRecompile && result.success && needsRerun) {
+    if (!this.pendingRecompile && (result.success || result.pdf) && needsRerun) {
       console.log('[main] Triggering automated rerun based on log message')
       this.pendingRecompile = true
 
@@ -1297,12 +1299,13 @@ export class LatexEditor {
   }
 
   private maybeRunBibtex(result: CompileResult): void {
-    if (this.pendingRecompile || this.pendingBibtex || !result.success || this.bibtexDone) return
+    if (this.pendingRecompile || this.pendingBibtex || this.bibtexDone) return
+    if (!result.success && !result.pdf) return // Must at least have produced something
 
     const hasBibFiles = this.fs.listFiles().some((f) => f.endsWith('.bib'))
-
     if (!hasBibFiles) return
 
+    console.log('[main] Triggering BibTeX run...')
     this.pendingBibtex = true
 
     this.runBibtexChain()
@@ -1331,7 +1334,7 @@ export class LatexEditor {
 
     if (!engine) return
 
-    this.sendFilesToBibtex(engine, mainBase, auxContent)
+    await this.sendFilesToBibtex(engine, mainBase, auxContent)
 
     const bibtexResult = await engine.compile(mainBase)
 
@@ -1339,16 +1342,24 @@ export class LatexEditor {
 
     const bbl = await engine.readFile(`${mainBase}.bbl`)
 
-    if (!bbl) return
+    if (!bbl) {
+      console.warn('[main] BibTeX finished but no .bbl was produced.')
+      return
+    }
 
+    console.log(`[main] BibTeX produced .bbl (${bbl.length} bytes). Writing back to engine...`)
     this.engine.writeFile(`${mainBase}.bbl`, bbl)
 
+    // Ensure the file is also in our VFS so the user can see it
+    this.fs.writeFile(`${mainBase}.bbl`, bbl)
+    this.emit('filesUpdate', { files: this.fs.listFiles() })
+
     this.pendingRecompile = true
-
     const r = await this.engine.compile()
-
     this.pendingRecompile = false
 
+    // Crucial: calling onCompileResult here will trigger ANOTHER maybeRecompile
+    // if the references are still not settled (which is normal after first .bbl write)
     this.onCompileResult(r)
 
     this.syncAndCompile()
@@ -1382,8 +1393,12 @@ export class LatexEditor {
     }
   }
 
-  private sendFilesToBibtex(engine: BibtexEngine, mainBase: string, auxContent: string): void {
-    engine.writeFile(`${mainBase}.aux`, auxContent)
+  private async sendFilesToBibtex(
+    engine: BibtexEngine,
+    mainBase: string,
+    auxContent: string,
+  ): Promise<void> {
+    await engine.writeFile(`${mainBase}.aux`, auxContent)
 
     const bibFiles = this.fs.listFiles().filter((f) => f.endsWith('.bib'))
 
@@ -1391,7 +1406,7 @@ export class LatexEditor {
       const content = this.fs.readFile(bibPath)
 
       if (content != null) {
-        engine.writeFile(bibPath, content)
+        await engine.writeFile(bibPath, content)
       }
     }
 

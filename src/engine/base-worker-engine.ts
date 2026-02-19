@@ -27,6 +27,22 @@ export abstract class BaseWorkerEngine<TMsg = unknown> {
       this.pendingResponses.clear()
     }
   }
+
+  /** Send a message to the worker and wait for a response keyed by responseKey. */
+  protected postMessageWithResponse(
+    msg: any,
+    responseKey: string,
+    transferables?: Transferable[],
+  ): Promise<TMsg> {
+    return new Promise<TMsg>((resolve) => {
+      this.pendingResponses.set(responseKey, resolve)
+      if (transferables?.length) {
+        this.worker!.postMessage(msg, transferables)
+      } else {
+        this.worker!.postMessage(msg)
+      }
+    })
+  }
 }
 
 const CLOUDFRONT_BASE = 'https://dwrg2en9emzif.cloudfront.net/'

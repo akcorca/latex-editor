@@ -100,6 +100,15 @@ function kpse_find_file_impl(nameptr, format, _mustexist) {
   // Only bare filenames
   if (reqname.includes("/")) return 0;
 
+  // PRIORITY 1: Check local /work/ directory (for .bib and .aux)
+  try {
+    var localPath = WORKROOT + "/" + reqname;
+    if (FS.analyzePath(localPath).exists) {
+      console.log("[bibtex-kpse] Found in local FS: " + reqname);
+      return allocateString(localPath);
+    }
+  } catch(e) {}
+
   var cacheKey = format + "/" + reqname;
 
   if (cacheKey in texlive404_cache) return 0;
