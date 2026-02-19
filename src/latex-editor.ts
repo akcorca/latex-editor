@@ -607,7 +607,12 @@ export class LatexEditor {
             <span id="status">Ready</span>
           </div>
           <div class="le-version-info">
-            <label for="texlive-version">TeX Live:</label>
+            <label for="project-select">Sample:</label>
+            <select id="project-select" class="le-version-select">
+              <option value="default">Default Project</option>
+              <option value="sample">Paper Sample</option>
+            </select>
+            <label for="texlive-version" style="margin-left: 10px;">TeX Live:</label>
             <select id="texlive-version" class="le-version-select">
               <option value="2025">2025 (Latest)</option>
               <option value="2020">2020 (Legacy)</option>
@@ -865,27 +870,33 @@ export class LatexEditor {
       })
     }
 
-    this.initVersionSelector()
+    this.initSelectors()
   }
 
-  private initVersionSelector(): void {
-    const selector = this.root.querySelector<HTMLSelectElement>('#texlive-version')
-    if (!selector) return
+  private initSelectors(): void {
+    const tlSelector = this.root.querySelector<HTMLSelectElement>('#texlive-version')
+    const projSelector = this.root.querySelector<HTMLSelectElement>('#project-select')
 
-    // Set initial value
-    selector.value = this.opts.texliveVersion || '2025'
+    const url = new URL(window.location.href)
 
-    selector.addEventListener('change', () => {
-      const newVersion = selector.value as TexliveVersion
-      if (newVersion === this.opts.texliveVersion) return
+    if (tlSelector) {
+      tlSelector.value = this.opts.texliveVersion || '2025'
+      tlSelector.addEventListener('change', () => {
+        const newVersion = tlSelector.value as TexliveVersion
+        if (newVersion === this.opts.texliveVersion) return
+        url.searchParams.set('tl', newVersion)
+        window.location.href = url.toString()
+      })
+    }
 
-      // We need to reload to clean up WASM workers and re-init with new version
-      // In a real app, you might want to handle this more gracefully, but
-      // for a TeX engine swap, a reload is the safest path to avoid stale state.
-      const url = new URL(window.location.href)
-      url.searchParams.set('tl', newVersion)
-      window.location.href = url.toString()
-    })
+    if (projSelector) {
+      projSelector.value = url.searchParams.get('proj') || 'default'
+      projSelector.addEventListener('change', () => {
+        const newProj = projSelector.value
+        url.searchParams.set('proj', newProj)
+        window.location.href = url.toString()
+      })
+    }
   }
 
   // ------------------------------------------------------------------

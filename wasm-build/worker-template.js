@@ -426,23 +426,36 @@ function kpse_find_file_impl(nameptr, format, _mustexist) {
 
     var xhr = tryFetch(reqname);
 
-    // If 404, try common extensions regardless of current name
+    // If 404, be smart about extensions
     if (xhr && xhr.status === 404) {
-        var exts = [];
-        if (format === 26) exts = [".tex", ".sty", ".cls", ".def", ".cfg", ".ltx"];
-        if (format === 3) exts = [".tfm"];
-        if (format === 7) exts = [".bst"];
-        
-        for (var i = 0; i < exts.length; i++) {
-            // Avoid double extensions like .tex.tex
-            if (reqname.endsWith(exts[i])) continue;
-
-            var retryXhr = tryFetch(reqname + exts[i]);
+        // Case 1: Request had extension, try without it
+        if (reqname.includes(".")) {
+            var bare = reqname.substring(0, reqname.lastIndexOf("."));
+            var retryXhr = tryFetch(bare);
             if (retryXhr && retryXhr.status === 200) {
-                console.log("[kpse] Found after retry: " + reqname + exts[i]);
+                console.log("[kpse] Found after removing extension: " + bare);
                 xhr = retryXhr;
-                reqname += exts[i];
-                break;
+                reqname = bare;
+            }
+        }
+        
+        // Case 2: Request didn't have extension (or Case 1 failed), try common ones
+        if (xhr.status === 404) {
+            var exts = [];
+            if (format === 26) exts = [".tex", ".sty", ".cls", ".def", ".cfg", ".ltx"];
+            if (format === 3) exts = [".tfm"];
+            if (format === 33) exts = [".vf"];
+            if (format === 7) exts = [".bst"];
+            
+            for (var i = 0; i < exts.length; i++) {
+                if (reqname.endsWith(exts[i])) continue;
+                var retryXhr = tryFetch(reqname + exts[i]);
+                if (retryXhr && retryXhr.status === 200) {
+                    console.log("[kpse] Found after adding " + exts[i] + ": " + reqname);
+                    xhr = retryXhr;
+                    reqname += exts[i];
+                    break;
+                }
             }
         }
     }

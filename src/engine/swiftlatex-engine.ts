@@ -85,7 +85,11 @@ export class SwiftLatexEngine extends BaseWorkerEngine<WorkerMessage> {
 
     // Pre-load format and pdftex.map in parallel
     const preloads: Promise<void>[] = [
-      this.preloadTexliveFile(11, 'pdftex.map', `${texliveUrl}pdftex/11/pdftex.map`),
+      this.preloadTexliveFile(
+        11,
+        'pdftex.map',
+        `${resolveTexliveUrl(this.texliveUrl, this.version)}pdftex/11/pdftex.map`,
+      ),
     ]
     if (!this.skipFormatPreload) {
       preloads.push(this.preloadFormat())

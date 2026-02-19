@@ -1,0 +1,2 @@
+trigger smarter extension retry
+trigger smarter extension retry 2
