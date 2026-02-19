@@ -29,8 +29,7 @@ export abstract class BaseWorkerEngine<TMsg = unknown> {
   }
 }
 
-const CLOUDFRONT_2020 = 'https://dwrg2en9emzif.cloudfront.net/2020/'
-const CLOUDFRONT_2025 = 'https://dwrg2en9emzif.cloudfront.net/2025/'
+const CLOUDFRONT_BASE = 'https://dwrg2en9emzif.cloudfront.net/'
 
 /** Resolve the TexLive server URL from an override, env var, or current origin. */
 export function resolveTexliveUrl(
@@ -42,11 +41,6 @@ export function resolveTexliveUrl(
   const envUrl = import.meta.env.VITE_TEXLIVE_URL
   if (envUrl) return envUrl.endsWith('/') ? envUrl : `${envUrl}/`
 
-  // Default behaviors based on version
-  if (version === '2025') {
-    return CLOUDFRONT_2025
-  }
-
-  // Use 2020 remote repo by default
-  return CLOUDFRONT_2020
+  // Consistent versioned path: https://.../{version}/
+  return `${CLOUDFRONT_BASE}${version}/`
 }
