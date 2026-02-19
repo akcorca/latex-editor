@@ -1,39 +1,24 @@
 /*
  * bibtex-worker-template.js — Web Worker for BibTeX WASM
- *
- * This file is prepended (--pre-js) to the emcc output to create
- * the final swiftlatexbibtex.js worker. It handles:
- *   - MEMFS setup (working directory + texlive cache)
- *   - Heap snapshot/restore for re-entrant compilations
- *   - kpathsea → network fallback for .bst files
- *   - Message protocol (writefile, mkdir, compilebibtex, readfile)
  */
 "use strict";
 
-/* ------------------------------------------------------------------ */
-/* Constants                                                           */
-/* ------------------------------------------------------------------ */
 var TEXCACHEROOT = "/tex";
 var WORKROOT = "/work";
 
-/* ------------------------------------------------------------------ */
-/* TexLive file caches                                                 */
-/* ------------------------------------------------------------------ */
 var texlive200_cache = {};
 var texlive404_cache = {};
-var fileid = 0;
 
-/* ------------------------------------------------------------------ */
-/* Emscripten Module hooks                                             */
-/* ------------------------------------------------------------------ */
 var Module = {};
 
 Module["print"] = function(a) {
   self.memlog += a + "\n";
+  console.log("[bibtex] " + a);
 };
 
 Module["printErr"] = function(a) {
   self.memlog += a + "\n";
+  console.warn("[bibtex-err] " + a);
 };
 
 Module["preRun"] = function() {
@@ -49,16 +34,10 @@ Module["postRun"] = function() {
 
 Module["noExitRuntime"] = true;
 
-/* ------------------------------------------------------------------ */
-/* State                                                               */
-/* ------------------------------------------------------------------ */
 self.memlog = "";
 self.texlive_endpoint = "";
 self.mainfile = "main";
 
-/* ------------------------------------------------------------------ */
-/* Heap snapshot / restore                                             */
-/* ------------------------------------------------------------------ */
 function dumpHeapMemory() {
   return new Uint8Array(wasmMemory.buffer).slice();
 }
@@ -66,16 +45,11 @@ function dumpHeapMemory() {
 function restoreHeapMemory() {
   var dst = new Uint8Array(wasmMemory.buffer);
   dst.set(self.initmem);
-  /* CRITICAL: zero grown pages — memory.grow() during compilation
-     leaves stale data that causes "already defined" errors. */
   if (dst.length > self.initmem.length) {
     dst.fill(0, self.initmem.length);
   }
 }
 
-/* ------------------------------------------------------------------ */
-/* String allocation helpers                                           */
-/* ------------------------------------------------------------------ */
 function allocateString(str) {
   var encoder = new TextEncoder();
   var bytes = encoder.encode(str);
@@ -86,45 +60,40 @@ function allocateString(str) {
   return ptr;
 }
 
-/* ------------------------------------------------------------------ */
-/* kpathsea network fallback (synchronous XHR)                         */
-/* ------------------------------------------------------------------ */
 function kpse_find_file_impl(nameptr, format, _mustexist) {
   var reqname = UTF8ToString(nameptr);
+  console.log("[bibtex-kpse] REQUESTED: " + reqname + " (format: " + format + ")");
   
-  // Strip prefixes if any
   if (reqname.startsWith("*") || reqname.startsWith("&")) {
     reqname = reqname.substring(1);
   }
 
-  // Only bare filenames
   if (reqname.includes("/")) return 0;
 
-  // PRIORITY 1: Check local /work/ directory (for .bib and .aux)
+  // PRIORITY 1: Local VFS
   try {
     var localPath = WORKROOT + "/" + reqname;
     if (FS.analyzePath(localPath).exists) {
-      console.log("[bibtex-kpse] Found in local FS: " + reqname);
+      console.log("[bibtex-kpse] FOUND LOCAL: " + reqname);
       return allocateString(localPath);
     }
   } catch(e) {}
 
   var cacheKey = format + "/" + reqname;
-
-  if (cacheKey in texlive404_cache) return 0;
-  if (cacheKey in texlive200_cache) {
+  if (texlive200_cache[cacheKey]) {
+    console.log("[bibtex-kpse] FOUND CACHE: " + reqname);
     return allocateString(texlive200_cache[cacheKey]);
   }
+  if (texlive404_cache[cacheKey]) {
+    return 0;
+  }
 
-  if (!self.texlive_endpoint) return 0;
-
-  // Helper for actual fetch
   function tryFetch(name) {
-    self.postMessage({ "cmd": "downloading", "file": name });
     var url = self.texlive_endpoint + "pdftex/" + format + "/" + name;
+    self.postMessage({ "cmd": "downloading", "file": name });
     var xhr = new XMLHttpRequest();
     xhr.open("GET", url, false);
-    xhr.timeout = 150000;
+    xhr.timeout = 30000;
     xhr.responseType = "arraybuffer";
     try {
       xhr.send();
@@ -134,35 +103,45 @@ function kpse_find_file_impl(nameptr, format, _mustexist) {
 
   var xhr = tryFetch(reqname);
 
-  // If 404, try common extensions
+  // Smart extension retry
   if (xhr && xhr.status === 404) {
-    var exts = [];
-    if (format === 26) exts = [".tex", ".sty", ".cls", ".def", ".cfg"];
-    if (format === 6) exts = [".bib"];
-    if (format === 7) exts = [".bst"];
-    
-    for (var i = 0; i < exts.length; i++) {
-      if (reqname.endsWith(exts[i])) continue;
-      var retryXhr = tryFetch(reqname + exts[i]);
+    if (reqname.includes(".")) {
+      var bare = reqname.substring(0, reqname.lastIndexOf("."));
+      var retryXhr = tryFetch(bare);
       if (retryXhr && retryXhr.status === 200) {
-        console.log("[bibtex-kpse] Found after retry: " + reqname + exts[i]);
         xhr = retryXhr;
-        reqname += exts[i];
-        break;
+        reqname = bare;
+      }
+    }
+    
+    if (xhr.status === 404) {
+      var exts = [];
+      if (format === 26) exts = [".tex", ".sty", ".cls"];
+      if (format === 6) exts = [".bib"];
+      if (format === 7) exts = [".bst"];
+      if (format === 3) exts = [".tfm"];
+      
+      for (var i = 0; i < exts.length; i++) {
+        if (reqname.endsWith(exts[i])) continue;
+        var retryXhr = tryFetch(reqname + exts[i]);
+        if (retryXhr && retryXhr.status === 200) {
+          console.log("[bibtex-kpse] FOUND AFTER RETRY: " + reqname + exts[i]);
+          xhr = retryXhr;
+          reqname += exts[i];
+          break;
+        }
       }
     }
   }
 
-  if (xhr && xhr.status === 200 && xhr.response) {
-    fileid++;
+  if (xhr && xhr.status === 200) {
+    var arraybuffer = xhr.response;
+    var fileid = reqname;
     var savepath = TEXCACHEROOT + "/" + fileid;
-    // Ensure extension for kpathsea
-    if (format === 6 && !savepath.endsWith(".bib")) savepath += ".bib";
-    if (format === 7 && !savepath.endsWith(".bst")) savepath += ".bst";
-
-    FS.writeFile(savepath, new Uint8Array(xhr.response));
+    var data = new Uint8Array(arraybuffer);
+    FS.writeFile(savepath, data);
     texlive200_cache[cacheKey] = savepath;
-    console.log("[bibtex-kpse] Downloaded: " + reqname + " (" + format + ")");
+    console.log("[bibtex-kpse] DOWNLOADED: " + fileid);
     return allocateString(savepath);
   }
 
@@ -170,50 +149,8 @@ function kpse_find_file_impl(nameptr, format, _mustexist) {
   return 0;
 }
 
-/* pk font finding (no-op for bibtex, but required by kpse hook) */
-function kpse_find_pk_impl(_nameptr, _dpi) {
-  return 0;
-}
-
-/* ------------------------------------------------------------------ */
-/* runMain — direct _main() call (avoids Emscripten exitRuntime bug)   */
-/* ------------------------------------------------------------------ */
-function runMain(programName, args) {
-  var fullArgs = [programName].concat(args);
-  var argPtrs = fullArgs.map(allocateString);
-  argPtrs.push(0);
-
-  var argv = _malloc(argPtrs.length * 4);
-  var heap32 = new Int32Array(wasmMemory.buffer);
-  for (var i = 0; i < argPtrs.length; i++) {
-    heap32[(argv >> 2) + i] = argPtrs[i];
-  }
-
-  var status;
-  try {
-    status = _main(fullArgs.length, argv);
-  } catch (e) {
-    if (typeof ExitStatus !== "undefined" && e instanceof ExitStatus) {
-      status = e.status;
-    } else {
-      throw e;
-    }
-  }
-
-  _free(argv);
-  for (var j = 0; j < argPtrs.length - 1; j++) {
-    _free(argPtrs[j]);
-  }
-
-  return status;
-}
-
-/* ------------------------------------------------------------------ */
-/* texmf.cnf — kpathsea needs this to find files in CWD + cache       */
-/* ------------------------------------------------------------------ */
 function writeTexmfCnf() {
   var cnf = [
-    "% texmf.cnf for WASM BibTeX",
     "BIBINPUTS = .;" + TEXCACHEROOT + "//",
     "BSTINPUTS = .;" + TEXCACHEROOT + "//",
     "TEXINPUTS = .;" + TEXCACHEROOT + "//",
@@ -222,42 +159,36 @@ function writeTexmfCnf() {
   FS.writeFile(WORKROOT + "/texmf.cnf", cnf);
 }
 
-/* ------------------------------------------------------------------ */
-/* compileBibtexRoutine                                                */
-/* ------------------------------------------------------------------ */
 function compileBibtexRoutine() {
+  console.log("[bibtex] Starting compilation for: " + self.mainfile);
   self.memlog = "";
   restoreHeapMemory();
 
-  /* Close stale file descriptors */
   var keys = Object.keys(FS.streams);
   for (var i = 0; i < keys.length; i++) {
     var fd = parseInt(keys[i]);
     if (fd > 2 && FS.streams[fd]) {
-      try { FS.close(FS.streams[fd]); } catch (e) { /* ignore */ }
+      try { FS.close(FS.streams[fd]); } catch (e) {}
     }
   }
 
-  /* kpathsea does lstat(argv[0]) to find the program directory.
-     Write a dummy file so the lstat succeeds. */
   try { FS.writeFile(WORKROOT + "/bibtex", ""); } catch(e) {}
-
   writeTexmfCnf();
 
   _setMainEntry(allocateString(self.mainfile));
 
-  var status;
+  var status = 2;
   try {
     status = _compileBibtex();
   } catch (e) {
     if (typeof ExitStatus !== "undefined" && e instanceof ExitStatus) {
-      /* BibTeX always calls exit() — 0=ok, 1=warnings, 2=errors */
       status = e.status;
     } else {
-      throw e;
+      console.error("[bibtex] Crash: " + e);
     }
   }
 
+  console.log("[bibtex] Finished with status: " + status);
   self.postMessage({
     "cmd": "compile",
     "result": status <= 1 ? "ok" : "error",
@@ -265,9 +196,6 @@ function compileBibtexRoutine() {
   });
 }
 
-/* ------------------------------------------------------------------ */
-/* readFileRoutine                                                     */
-/* ------------------------------------------------------------------ */
 function readFileRoutine(url) {
   try {
     var data = FS.readFile(WORKROOT + "/" + url, { encoding: "utf8" });
@@ -277,9 +205,6 @@ function readFileRoutine(url) {
   }
 }
 
-/* ------------------------------------------------------------------ */
-/* Message handler                                                     */
-/* ------------------------------------------------------------------ */
 self["onmessage"] = function(ev) {
   var data = ev.data;
   var cmd = data["cmd"];
@@ -292,12 +217,11 @@ self["onmessage"] = function(ev) {
       FS.writeFile(WORKROOT + "/" + data.url, data.src);
       self.postMessage({ "result": "ok", "cmd": "writefile" });
     } catch (e) {
-      /* Parent directory may not exist — create it */
       var parts = data.url.split("/");
       var dir = WORKROOT;
       for (var i = 0; i < parts.length - 1; i++) {
         dir += "/" + parts[i];
-        try { FS.mkdir(dir); } catch (e2) { /* exists */ }
+        try { FS.mkdir(dir); } catch (e2) {}
       }
       try {
         FS.writeFile(WORKROOT + "/" + data.url, data.src);
