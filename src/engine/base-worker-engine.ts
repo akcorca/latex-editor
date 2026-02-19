@@ -29,6 +29,7 @@ export abstract class BaseWorkerEngine<TMsg = unknown> {
   }
 }
 
+const CLOUDFRONT_2020 = 'https://dwrg2en9emzif.cloudfront.net/2020/'
 const CLOUDFRONT_2025 = 'https://dwrg2en9emzif.cloudfront.net/2025/'
 
 /** Resolve the TexLive server URL from an override, env var, or current origin. */
@@ -46,6 +47,6 @@ export function resolveTexliveUrl(
     return CLOUDFRONT_2025
   }
 
-  // Legacy 2020 fallback
-  return `${location.origin}${import.meta.env.BASE_URL}texlive/`
+  // Use 2020 remote repo by default
+  return CLOUDFRONT_2020
 }
