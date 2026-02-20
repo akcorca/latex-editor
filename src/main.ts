@@ -1,7 +1,8 @@
 import { LatexEditor } from './latex-editor'
 import './styles.css'
 
-const container = document.getElementById('app')!
+const editorContainer = document.getElementById('editor-container')!
+const previewContainer = document.getElementById('preview-container')!
 
 const urlParams = new URLSearchParams(window.location.search)
 const tlParam = urlParams.get('tl') as any
@@ -37,7 +38,7 @@ async function start() {
     opts.files = files
   }
 
-  const editor = new LatexEditor(container, opts)
+  const editor = new LatexEditor(editorContainer, previewContainer, opts)
 
   await editor.init()
 

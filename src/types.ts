@@ -54,12 +54,6 @@ export interface LatexEditorOptions {
   serviceWorker?: boolean
   /** Base URL for WASM/static assets. Defaults to `import.meta.env.BASE_URL`. */
   assetBaseUrl?: string
-  /**
-   * If true, render only the Monaco editor in legacy single-container mode.
-   * File tree, outline, status bar, and built-in PDF viewer are not created.
-   * In the two-container constructor mode, this flag is ignored.
-   */
-  headless?: boolean
   /** If true, do not attempt to preload the base .fmt file from the server. */
   skipFormatPreload?: boolean
 }

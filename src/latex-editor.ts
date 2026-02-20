@@ -20,11 +20,7 @@ import type {
   TexError,
   TexliveVersion,
 } from './types'
-import { ErrorLog } from './ui/error-log'
 import { setDiagnosticMarkers, setErrorMarkers } from './ui/error-markers'
-import { FileTree } from './ui/file-tree'
-import { setupDividers } from './ui/layout'
-import { Outline } from './ui/outline'
 import { PdfViewer } from './viewer/pdf-viewer'
 
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.bmp', '.webp'])
@@ -63,8 +59,6 @@ function resolveAssetBase(provided?: string): string {
   }
 }
 
-type EditorLayoutMode = 'legacy' | 'split'
-
 export class LatexEditor {
   // --- Options ---
 
@@ -75,12 +69,6 @@ export class LatexEditor {
   private assetBaseUrl: string
 
   // --- DOM ---
-
-  private root: HTMLElement | null = null
-
-  private statusElement: HTMLElement | null = null
-
-  private layoutMode: EditorLayoutMode = 'legacy'
 
   private editorContainer: HTMLElement | null = null
 
@@ -95,12 +83,6 @@ export class LatexEditor {
   private synctexParser = new SynctexParser()
 
   private pdfViewer?: PdfViewer
-
-  private errorLog?: ErrorLog
-
-  private fileTree?: FileTree
-
-  private outline?: Outline
 
   private scheduler!: CompileScheduler
 
@@ -132,8 +114,6 @@ export class LatexEditor {
 
   private switchingModel = false
 
-  private lastCompileErrors: TexError[] = []
-
   private previewEl: HTMLElement | null = null
 
   private bibtexEngine: BibtexEngine | null = null
@@ -150,18 +130,12 @@ export class LatexEditor {
 
   private listeners = new Map<string, Set<EventHandler<any>>>()
 
-  constructor(container: HTMLElement, options?: LatexEditorOptions)
   constructor(
     editorContainer: HTMLElement,
     previewContainer: HTMLElement,
-    options?: LatexEditorOptions,
-  )
-  constructor(
-    container: HTMLElement,
-    previewOrOptions?: HTMLElement | LatexEditorOptions,
     options: LatexEditorOptions = {},
   ) {
-    this.opts = previewOrOptions instanceof HTMLElement ? options : (previewOrOptions ?? {})
+    this.opts = options
 
     this.mainFile = this.opts.mainFile ?? 'main.tex'
 
@@ -201,62 +175,31 @@ export class LatexEditor {
       this.fs = new VirtualFS()
     }
 
-    if (previewOrOptions instanceof HTMLElement) {
-      // New constructor shape:
-      // new LatexEditor(editorContainer, previewContainer, options?)
-      // (headless mode is ignored in this form, because preview is always supplied).
-      this.layoutMode = 'split'
-      this.editorContainer = container
-      this.previewContainer = previewOrOptions
-    } else {
-      this.layoutMode = 'legacy'
-      this.root = this.createDOM(container)
+    this.editorContainer = editorContainer
+    this.previewContainer = previewContainer
 
-      const editorContainer = this.root.querySelector<HTMLElement>('.le-editor')
+    if (this.editorContainer === null) {
+      throw new Error('Failed to initialize editor container.')
+    }
 
-      const previewContainer = this.root.querySelector<HTMLElement>('.le-viewer')
-
-      this.editorContainer = editorContainer
-      this.previewContainer = previewContainer
-      this.statusElement = this.root.querySelector<HTMLElement>('#status')
-
-      if (this.editorContainer === null) {
-        throw new Error('Failed to initialize editor container.')
-      }
-
-      if (this.previewContainer === null) {
-        throw new Error('Failed to initialize preview container.')
-      }
+    if (this.previewContainer === null) {
+      throw new Error('Failed to initialize preview container.')
     }
 
     this.initComponents()
   }
 
-  private isLegacyMode(): boolean {
-    return this.layoutMode === 'legacy'
-  }
-
   private initComponents(): void {
-    const isLegacy = this.isLegacyMode()
-    const isHeadless = isLegacy && !!this.opts.headless
-
-    this.initViewer(isHeadless, isLegacy)
+    this.initViewer()
     this.initScheduler()
     this.initProjectModels()
     this.initEditorState()
-    this.initLegacyPanels(isLegacy)
     this.initBinaryPreview()
-    this.initEditorInteraction(isHeadless, isLegacy)
+    this.initEditorInteraction()
     this.initRuntimeServices()
-
-    if (isLegacy) {
-      this.initSelectors()
-    }
   }
 
-  private initViewer(isHeadless: boolean, isLegacy: boolean): void {
-    if (isHeadless) return
-
+  private initViewer(): void {
     if (!this.previewContainer) {
       throw new Error('Preview container is not initialized.')
     }
@@ -265,15 +208,6 @@ export class LatexEditor {
 
     this.pdfViewer.setInverseSearchHandler((loc) => {
       this.revealLine(loc.line, loc.file)
-    })
-
-    if (!isLegacy) return
-
-    const errorLogContainer = this.root?.querySelector<HTMLElement>('.le-error-log')
-    if (!errorLogContainer) throw new Error('Error log container is not initialized.')
-
-    this.errorLog = new ErrorLog(errorLogContainer, (file, line) => {
-      this.revealLine(line, file)
     })
   }
 
@@ -349,24 +283,6 @@ export class LatexEditor {
     }
   }
 
-  private initLegacyPanels(isLegacy: boolean): void {
-    if (!isLegacy || !this.root) return
-
-    const fileTreeContainer = this.root.querySelector<HTMLElement>('.le-file-tree')
-    if (!fileTreeContainer) throw new Error('File tree container is not initialized.')
-
-    this.fileTree = new FileTree(fileTreeContainer, this.fs, (path) => this.onFileSelect(path))
-
-    const outlineContainer = this.root.querySelector<HTMLElement>('.le-outline')
-    if (!outlineContainer) throw new Error('Outline container is not initialized.')
-
-    this.outline = new Outline(outlineContainer, this.projectIndex, (line) =>
-      revealLine(this.editor, line),
-    )
-
-    this.outline.update(this.currentFile)
-  }
-
   private initBinaryPreview(): void {
     this.previewEl = document.createElement('div')
     this.previewEl.className = 'binary-preview'
@@ -374,7 +290,7 @@ export class LatexEditor {
     this.editorContainer?.appendChild(this.previewEl)
   }
 
-  private initEditorInteraction(isHeadless: boolean, isLegacy: boolean): void {
+  private initEditorInteraction(): void {
     this.editor.onDidChangeModel(() => {
       const model = this.editor.getModel()
 
@@ -385,10 +301,6 @@ export class LatexEditor {
 
         if (this.currentFile !== path) {
           this.currentFile = path
-
-          this.fileTree?.setActive(path)
-
-          this.outline?.update(path)
 
           this.emitOutline()
 
@@ -405,8 +317,6 @@ export class LatexEditor {
       const pos = this.editor.getPosition()
 
       if (!pos) return
-
-      this.outline?.setActiveLine(pos.lineNumber)
 
       this.emit('cursorChange', {
         path: this.currentFile,
@@ -441,14 +351,7 @@ export class LatexEditor {
         this.scheduler.flush()
       },
     })
-
-    if (isHeadless) return
-
     this.pdfViewer?.setDownloadHandler(() => this.downloadPdf())
-
-    if (isLegacy && this.root) {
-      setupDividers(this.root)
-    }
   }
 
   private initRuntimeServices(): void {
@@ -558,8 +461,6 @@ export class LatexEditor {
 
     this.emit('filesUpdate', { files: this.fs.listFiles() })
 
-    this.outline?.update(this.currentFile)
-
     this.emitOutline()
 
     // Sync and compile
@@ -661,8 +562,6 @@ export class LatexEditor {
     }
 
     if (path === this.currentFile) {
-      this.outline?.update(path)
-
       this.emitOutline()
     }
   }
@@ -753,7 +652,7 @@ export class LatexEditor {
     return this.editor
   }
 
-  /** Get the built-in PDF viewer instance (if not in headless mode). */
+  /** Get the built-in PDF viewer instance. */
 
   getViewer(): PdfViewer | undefined {
     return this.pdfViewer
@@ -801,8 +700,6 @@ export class LatexEditor {
     this.bibtexEngine?.terminate()
 
     this.listeners.clear()
-
-    this.root?.remove()
   }
 
   // ------------------------------------------------------------------
@@ -849,100 +746,6 @@ export class LatexEditor {
 
   // ------------------------------------------------------------------
 
-  private createDOM(container: HTMLElement): HTMLElement {
-    const root = document.createElement('div')
-
-    root.className = 'le-root'
-
-    if (this.opts.headless) {
-      // Just a simple wrapper for Monaco
-
-      root.innerHTML = '<div class="le-editor" id="editor-panel"></div>'
-    } else {
-      root.innerHTML = `
-
-        <div class="le-main" id="main-container">
-
-          <div class="le-left-panel panel" id="left-panel">
-
-            <div class="le-file-tree" id="file-tree-container"></div>
-
-            <div class="le-outline" id="outline-container"></div>
-
-          </div>
-
-          <div class="le-divider-left divider"></div>
-
-          <div class="le-editor panel" id="editor-panel"></div>
-
-          <div class="le-divider-right divider"></div>
-
-          <div class="le-viewer panel" id="viewer-panel"></div>
-
-        </div>
-
-        <div class="le-error-log" id="error-log-panel"></div>
-
-        <div class="le-status-bar">
-          <div class="le-status-info">
-            <span id="status">Ready</span>
-          </div>
-          <div class="le-version-info">
-            <label for="project-select">Sample:</label>
-            <select id="project-select" class="le-version-select">
-              <option value="default">Default Project</option>
-              <option value="sample">Paper Sample</option>
-            </select>
-            <label for="texlive-version" style="margin-left: 10px;">TeX Live:</label>
-            <select id="texlive-version" class="le-version-select">
-              <option value="2025">2025 (Latest)</option>
-              <option value="2020">2020 (Legacy)</option>
-            </select>
-          </div>
-        </div>
-
-      `
-    }
-
-    container.appendChild(root)
-
-    return root
-  }
-
-  private initSelectors(): void {
-    if (!this.root) return
-
-    const tlSelector = this.root.querySelector<HTMLSelectElement>('#texlive-version')
-    const projSelector = this.root.querySelector<HTMLSelectElement>('#project-select')
-
-    const url = new URL(window.location.href)
-
-    if (tlSelector) {
-      const versionSelector = tlSelector
-
-      versionSelector.value = this.opts.texliveVersion || '2025'
-
-      versionSelector.addEventListener('change', () => {
-        const newVersion = versionSelector.value as TexliveVersion
-        if (newVersion === this.opts.texliveVersion) return
-        url.searchParams.set('tl', newVersion)
-        window.location.href = url.toString()
-      })
-    }
-
-    if (projSelector) {
-      const projectSelector = projSelector
-
-      projectSelector.value = url.searchParams.get('proj') || 'default'
-
-      projectSelector.addEventListener('change', () => {
-        const newProj = projectSelector.value
-        url.searchParams.set('proj', newProj)
-        window.location.href = url.toString()
-      })
-    }
-  }
-
   // ------------------------------------------------------------------
 
   // Private: Core logic
@@ -968,26 +771,6 @@ export class LatexEditor {
       const label = detail ? `${labels[status]} ${detail}` : labels[status]
 
       this.pdfViewer.setLoadingStatus(label)
-    }
-
-    const statusEl = this.statusElement ?? null
-
-    if (statusEl) {
-      const labels: Record<AppStatus, string> = {
-        unloaded: 'Initializing...',
-
-        loading: 'Loading engine...',
-
-        ready: 'Ready',
-
-        compiling: 'Compiling...',
-
-        error: 'Error',
-
-        rendering: 'Rendering PDF...',
-      }
-
-      statusEl.textContent = detail ? `${labels[status]} ${detail}` : labels[status]
     }
 
     const payload: { status: AppStatus; detail?: string } = { status }
@@ -1058,8 +841,6 @@ export class LatexEditor {
     }
 
     if (path === this.currentFile) {
-      this.outline?.update(path)
-
       this.emitOutline()
     }
 
@@ -1101,9 +882,6 @@ export class LatexEditor {
       // Binary file — show preview instead of Monaco
 
       this.showBinaryPreview(path, target.content)
-
-      this.fileTree?.setActive(path)
-
       return
     }
 
@@ -1130,10 +908,6 @@ export class LatexEditor {
 
       this.switchingModel = false
     }
-
-    this.fileTree?.setActive(path)
-
-    this.outline?.update(path)
 
     this.emitOutline()
 
@@ -1261,13 +1035,9 @@ export class LatexEditor {
   }
 
   private handlePostCompile(result: CompileResult): void {
-    this.lastCompileErrors = result.errors
-
     setErrorMarkers(result.errors)
 
     this.updateAuxIndex()
-
-    this.outline?.update(this.currentFile)
 
     this.emitOutline()
 
@@ -1522,20 +1292,6 @@ export class LatexEditor {
     setDiagnosticMarkers(diagnostics)
 
     this.emit('diagnostics', { diagnostics: diagnostics as TexError[] })
-
-    if (this.errorLog) {
-      const diagAsErrors: TexError[] = diagnostics.map((d) => ({
-        line: d.line,
-
-        message: d.message,
-
-        severity: d.severity === 'info' ? ('warning' as const) : d.severity,
-
-        file: d.file,
-      }))
-
-      this.errorLog.update([...this.lastCompileErrors, ...diagAsErrors])
-    }
   }
 
   private downloadPdf(): void {

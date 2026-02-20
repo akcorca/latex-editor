@@ -82,12 +82,12 @@ The `LatexEditor` SDK allows you to specify the `texliveUrl`. You can point diff
 
 ```typescript
 // Legacy 2020 instance
-const editor2020 = new LatexEditor(container, {
+const editor2020 = new LatexEditor(editorContainer, previewContainer, {
   texliveUrl: 'https://cdn.example.com/2020/'
 })
 
 // New 2025 instance
-const editor2025 = new LatexEditor(container, {
+const editor2025 = new LatexEditor(editorContainer, previewContainer, {
   texliveUrl: 'https://cdn.example.com/2025/'
 })
 ```

@@ -54,8 +54,7 @@ As shown in \cite{knuth1984}, TeX is great.
 ```
 
 ### Split-container mode (Editor + PDF only)
-Build a minimal layout by giving both editor and preview nodes. Legacy UI panels
-(file tree, outline, status bar, theme) are not created automatically.
+Build a minimal layout by giving both editor and preview nodes.
 
 ```typescript
 const editor = new LatexEditor(editorContainer, previewContainer, {

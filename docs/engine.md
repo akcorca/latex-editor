@@ -49,7 +49,7 @@ In most modern setups (Vite, Webpack 5), **you don't need to set `assetBaseUrl` 
 **Manual Configuration**:
 If you host assets on a specific CDN or a non-standard path, provide the `assetBaseUrl`:
 ```typescript
-const editor = new LatexEditor(container, {
+const editor = new LatexEditor(editorContainer, previewContainer, {
   assetBaseUrl: 'https://cdn.example.com/assets/latex-editor/'
 })
 ```
