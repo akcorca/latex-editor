@@ -17,7 +17,8 @@
       "import": "./dist/latex-editor.js",
       "types": "./dist/index.d.ts"
     },
-    "./style.css": "./dist/latex-editor.css"
+    "./style.css": "./dist/latex-editor.css",
+    "./latex-editor.css": "./dist/latex-editor.css"
   },
   "scripts": {
     "dev": "vite --port 6001",

@@ -1,3 +1,5 @@
+import './styles.css'
+
 export { LatexEditor } from './latex-editor'
 export type {
   AppStatus,
