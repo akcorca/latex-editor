@@ -18,6 +18,7 @@ import type {
   CompileResult,
   LatexEditorEventMap,
   LatexEditorOptions,
+  LatexEditorStatusEvent,
   TexError,
   TexliveVersion,
 } from './types'
@@ -791,7 +792,11 @@ export class LatexEditor {
 
   // ------------------------------------------------------------------
 
-  private setStatus(status: AppStatus, detail?: string): void {
+  private setStatus(
+    status: AppStatus,
+    detail?: string,
+    flags?: Pick<LatexEditorStatusEvent, 'preambleSnapshot'>,
+  ): void {
     if (this.pdfViewer) {
       const labels: Record<AppStatus, string> = {
         unloaded: 'Initializing...',
@@ -812,9 +817,10 @@ export class LatexEditor {
       this.pdfViewer.setLoadingStatus(label)
     }
 
-    const payload: { status: AppStatus; detail?: string } = { status }
+    const payload: LatexEditorStatusEvent = { status }
 
-    if (detail !== undefined) payload.detail = detail
+    if (detail !== undefined) payload.message = detail
+    if (flags?.preambleSnapshot) payload.preambleSnapshot = true
 
     this.emit('status', payload)
   }
@@ -1024,7 +1030,9 @@ export class LatexEditor {
   private onCompileResult(result: CompileResult): void {
     perf.end('compile')
 
-    const detail = result.preambleSnapshot ? 'cached preamble' : undefined
+    const statusFlags: Pick<LatexEditorStatusEvent, 'preambleSnapshot'> = {
+      preambleSnapshot: !!result.preambleSnapshot,
+    }
 
     this.updateEngineMetadata(result)
 
@@ -1033,17 +1041,20 @@ export class LatexEditor {
     }
 
     if (result.success && result.pdf) {
-      this.handleSuccessfulCompile(result, detail)
+      this.handleSuccessfulCompile(result, statusFlags)
     } else {
       perf.end('total')
       console.error('[engine] compilation failed. memlog:', result.log)
-      this.setStatus(result.errors.length > 0 ? 'error' : 'ready')
+      this.setStatus(result.errors.length > 0 ? 'error' : 'ready', undefined, statusFlags)
     }
 
     this.handlePostCompile(result)
   }
 
-  private handleSuccessfulCompile(result: CompileResult, detail?: string): void {
+  private handleSuccessfulCompile(
+    result: CompileResult,
+    statusFlags: Pick<LatexEditorStatusEvent, 'preambleSnapshot'>,
+  ): void {
     for (const path of this.fs.listFiles()) {
       const file = this.fs.getFile(path)
 
@@ -1064,12 +1075,12 @@ export class LatexEditor {
 
         perf.end('total')
 
-        this.setStatus('ready', detail)
+        this.setStatus('ready', undefined, statusFlags)
       })
     } else {
       perf.end('total')
 
-      this.setStatus('ready', detail)
+      this.setStatus('ready', undefined, statusFlags)
     }
   }
 

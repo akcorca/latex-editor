@@ -56,7 +56,10 @@ Use `editor.on(eventName, handler)` to listen for changes:
 - `compile`: Fired when a compilation cycle completes.
     - Detail: `{ result: CompileResult }`
 - `status`: Fired when the editor status changes (e.g., `'compiling'`, `'ready'`, `'error'`).
-    - During `'loading'`, the `detail` field provides download progress (e.g., `'45%'`).
+    - Detail fields:
+      - `status`: lifecycle state
+      - `message`: optional human-readable detail text (for loading/progress)
+      - `preambleSnapshot`: `true` when a cached preamble `.fmt` was reused
 - `filechange`: Fired when the content of a file is modified.
 - `filesUpdate`: Fired when files are added or deleted.
 - `cursorChange`: Fired when the user moves the cursor in the editor.

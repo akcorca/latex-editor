@@ -64,13 +64,22 @@ export interface LatexEditorOptions {
   runtimeScopeAttribute?: string
 }
 
+export interface LatexEditorStatusEvent {
+  /** Normalized editor lifecycle status. */
+  status: AppStatus
+  /** Human-readable status text. */
+  message?: string
+  /** True when the engine reused a cached `.fmt` preamble this cycle. */
+  preambleSnapshot?: boolean
+}
+
 export interface LatexEditorEventMap {
   /** Triggered when a compilation finishes */
   compile: { result: CompileResult }
   /** Triggered when file content changes */
   filechange: { path: string; content: string | Uint8Array }
   /** Triggered when editor status changes */
-  status: { status: AppStatus; detail?: string }
+  status: LatexEditorStatusEvent
   /** Triggered when the set of files in the project changes (created/deleted) */
   filesUpdate: { files: string[] }
   /** Triggered when the document outline (sections) is updated */
