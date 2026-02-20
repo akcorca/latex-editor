@@ -39,7 +39,6 @@ export class SwiftLatexEngine extends BaseWorkerEngine<WorkerMessage> {
   private skipFormatPreload: boolean
   private version: TexliveVersion
 
-  public onProgress?: (progress: number) => void
   public onFileDownload?: (filename: string) => void
 
   constructor(options?: SwiftLatexEngineOptions) {
