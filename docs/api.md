@@ -1,19 +1,19 @@
 # API Reference
 
-Full reference for the `LatexEditor` SDK.
+Full reference for the `FastLatex` SDK.
 
 ## Constructor
 
 ```typescript
-new LatexEditor(editorContainer: HTMLElement | string, previewContainer: HTMLElement | string, options?: LatexEditorOptions)
+new FastLatex(editorContainer: HTMLElement | string, previewContainer: HTMLElement | string, options?: FastLatexOptions)
 
 ## Styling
 
-`LatexEditor` does not inject the optional "batteries-included" stylesheet from the JS entrypoint anymore.
+`FastLatex` does not inject the optional "batteries-included" stylesheet from the JS entrypoint anymore.
 When you use built-in editor/viewer containers (preview panel, binary overlays, loading bar, controls), import:
 
 ```ts
-import 'latex-editor/style.css'
+import 'fastlatex/style.css'
 ```
 ```
 
@@ -35,7 +35,7 @@ or a CSS selector string.
 | `skipFormatPreload` | `boolean` | `false` | Skip initial `.fmt` preload during engine bootstrap |
 | `editorContainerClassName` | `string` | `''` | Extra class name(s) for the editor container |
 | `previewContainerClassName` | `string` | `''` | Extra class name(s) for the preview container |
-| `runtimeScopeAttribute` | `string` | `data-latex-editor-runtime` | Attribute used to scope runtime UI styles |
+| `runtimeScopeAttribute` | `string` | `data-fastlatex-runtime` | Attribute used to scope runtime UI styles |
 ## Methods
 
 - `init(): Promise<void>`: Initializes the WASM engines and runs the first compilation.

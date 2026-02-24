@@ -1,4 +1,4 @@
-import { LatexEditor } from './latex-editor'
+import { FastLatex } from './fastlatex'
 import type { SectionDef } from './lsp/types'
 import './styles.css'
 
@@ -12,7 +12,7 @@ const errorCountElement = document.getElementById('error-count') as HTMLSpanElem
 const addFileButton = document.getElementById('add-file-btn') as HTMLButtonElement
 const texliveVersionSelect = document.getElementById('texlive-version') as HTMLSelectElement
 const projectSelect = document.getElementById('project-select') as HTMLSelectElement
-let editorRef: LatexEditor | null = null
+let editorRef: FastLatex | null = null
 
 const DEFAULT_TEXLIVE = '2025' as const
 const DEFAULT_PROJECT = 'default' as const
@@ -239,7 +239,7 @@ async function start() {
     opts.files = files
   }
 
-  const editor = new LatexEditor(editorContainer, previewContainer, opts)
+  const editor = new FastLatex(editorContainer, previewContainer, opts)
   editorRef = editor
   editor.on('filesUpdate', ({ files }) => {
     renderFileList(files)
@@ -279,7 +279,7 @@ async function start() {
   ;(globalThis as Record<string, unknown>).__engine = (editor as any).engine
   ;(globalThis as Record<string, unknown>).__pdfViewer = editor.getViewer()
   ;(globalThis as Record<string, unknown>).__editor = editor.getMonacoEditor()
-  ;(globalThis as Record<string, unknown>).__latexEditor = editor
+  ;(globalThis as Record<string, unknown>).__fastLatex = editor
 }
 
 function bindDemoSelectors(): void {

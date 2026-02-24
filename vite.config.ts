@@ -14,7 +14,7 @@ export default defineConfig(({ mode }) => {
           lib: {
             entry: 'src/index.ts',
             formats: ['es'] as const,
-            fileName: 'latex-editor',
+            fileName: 'fastlatex',
           },
           cssFileName: 'style',
           rollupOptions: {

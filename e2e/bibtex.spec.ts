@@ -27,7 +27,7 @@ As shown in \\cite{knuth1984}, TeX is great.
     // Use loadProject to set both files at once and trigger compilation
     await page.evaluate(({ bib, tex }) => {
       // @ts-ignore
-      window.__latexEditor.loadProject({
+      window.__fastLatex.loadProject({
         'main.tex': tex,
         'references.bib': bib
       })

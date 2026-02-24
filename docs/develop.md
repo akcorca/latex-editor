@@ -1,6 +1,6 @@
 # Development Guide
 
-This guide is for developers contributing to the `latex-editor` codebase.
+This guide is for developers contributing to the `fastlatex` codebase.
 
 ## Quick Start
 

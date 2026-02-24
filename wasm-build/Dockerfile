@@ -24,7 +24,7 @@
 
 FROM emscripten/emsdk:3.1.46
 
-LABEL maintainer="latex-editor"
+LABEL maintainer="fastlatex"
 LABEL description="pdfTeX WASM build environment with SyncTeX support (TeX Live 2025)"
 
 # Use bash with pipefail for proper error propagation

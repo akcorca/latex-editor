@@ -1,13 +1,13 @@
 # Architecture
 
-`LatexEditor` is designed as a **headless-first SDK**. The core logic is decoupled from the UI, allowing it to run as a full IDE or a background compilation service.
+`FastLatex` is designed as a **headless-first SDK**. The core logic is decoupled from the UI, allowing it to run as a full IDE or a background compilation service.
 
 ## High-Level Overview
 
 ```
 [ Host Application ]
       ↓
-[ LatexEditor SDK ] (src/latex-editor.ts)
+[ FastLatex SDK ] (src/fastlatex.ts)
       ├── [ VirtualFS ] (src/fs/virtual-fs.ts) - In-memory file management
       ├── [ LSP Engine ] (src/lsp/) - Completion, Hover, Diagnostics, Rename
       ├── [ Worker Orchestrator ] (src/engine/)
@@ -16,7 +16,7 @@
       └── [ UI Components ] (src/ui/, src/viewer/) - Optional (hidden in headless mode)
 ```
 
-- **SDK Core**: Managed by `LatexEditor` class. Orchestrates VFS, LSP, and Engines.
+- **SDK Core**: Managed by `FastLatex` class. Orchestrates VFS, LSP, and Engines.
 - **Workers**: WASM engines run in Web Workers to keep the main thread responsive.
 - **Communication**: Asynchronous via `postMessage`. A request-response protocol is implemented using unique message IDs.
 - **SyncTeX**: A binary parser (`src/synctex/`) processes `.synctex` files for bidirectional PDF ↔ Source navigation.
@@ -34,7 +34,7 @@ src/
 ├── ui/               # IDE UI components (FileTree, Outline, ErrorLog)
 ├── perf/             # Performance tracking & debug overlay
 ├── index.ts          # SDK Entry point (barrel export)
-├── latex-editor.ts   # SDK Main class (orchestrator)
+├── fastlatex.ts      # SDK Main class (orchestrator)
 └── main.ts           # Standalone IDE entry point (index.html)
 
 wasm-build/           # C/C++ source and Docker pipeline for pdfTeX WASM

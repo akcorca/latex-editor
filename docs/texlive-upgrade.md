@@ -78,16 +78,16 @@ Instead of overwriting the root `pdftex/` folder, use versioned prefixes in your
 Update your `scripts/sync-texlive-s3.sh` or manual `aws s3 sync` commands to include the version prefix.
 
 ### 2. Client-Side Switching
-The `LatexEditor` SDK allows you to specify the `texliveUrl`. You can point different instances of your application to different versions:
+The `FastLatex` SDK allows you to specify the `texliveUrl`. You can point different instances of your application to different versions:
 
 ```typescript
 // Legacy 2020 instance
-const editor2020 = new LatexEditor(editorContainer, previewContainer, {
+const editor2020 = new FastLatex(editorContainer, previewContainer, {
   texliveUrl: 'https://cdn.example.com/2020/'
 })
 
 // New 2025 instance
-const editor2025 = new LatexEditor(editorContainer, previewContainer, {
+const editor2025 = new FastLatex(editorContainer, previewContainer, {
   texliveUrl: 'https://cdn.example.com/2025/'
 })
 ```

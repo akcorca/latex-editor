@@ -8,7 +8,7 @@
 #
 # Environment variables:
 #   TEXMF_DIST   Use existing texmf-dist directory (skips download)
-#   S3_BUCKET    S3 bucket name (default: akcorca-texlive)
+#   S3_BUCKET    S3 bucket name (default: corca-ai-texlive)
 #   WORK_DIR     Working directory (default: /tmp/texlive-s3)
 
 set -euo pipefail
@@ -17,7 +17,7 @@ TEXLIVE_YEAR=2025
 TEXMF_TARBALL="texlive-20250308-texmf.tar.xz"
 TEXMF_URL="https://ftp.math.utah.edu/pub/tex/historic/systems/texlive/${TEXLIVE_YEAR}/${TEXMF_TARBALL}"
 
-S3_BUCKET="${S3_BUCKET:-akcorca-texlive}"
+S3_BUCKET="${S3_BUCKET:-corca-ai-texlive}"
 WORK_DIR="${WORK_DIR:-/tmp/texlive-s3}"
 
 DO_UPLOAD=false

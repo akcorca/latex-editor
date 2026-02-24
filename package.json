@@ -1,5 +1,5 @@
 {
-  "name": "latex-editor",
+  "name": "fastlatex",
   "version": "0.1.0",
   "engines": {
     "node": ">=24"
@@ -9,16 +9,16 @@
   ],
   "private": true,
   "type": "module",
-  "main": "./dist/latex-editor.js",
-  "module": "./dist/latex-editor.js",
+  "main": "./dist/fastlatex.js",
+  "module": "./dist/fastlatex.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/latex-editor.js",
+      "import": "./dist/fastlatex.js",
       "types": "./dist/index.d.ts"
     },
-    "./style.css": "./dist/latex-editor.css",
-    "./latex-editor.css": "./dist/latex-editor.css"
+    "./style.css": "./dist/fastlatex.css",
+    "./fastlatex.css": "./dist/fastlatex.css"
   },
   "scripts": {
     "dev": "vite --port 6001",

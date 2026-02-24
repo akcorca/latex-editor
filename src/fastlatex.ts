@@ -16,9 +16,9 @@ import './editor-runtime.css'
 import type {
   AppStatus,
   CompileResult,
-  LatexEditorEventMap,
-  LatexEditorOptions,
-  LatexEditorStatusEvent,
+  FastLatexEventMap,
+  FastLatexOptions,
+  FastLatexStatusEvent,
   TexError,
   TexliveVersion,
 } from './types'
@@ -77,12 +77,12 @@ function resolveAssetBase(provided?: string): string {
   }
 }
 
-export class LatexEditor {
+export class FastLatex {
   // --- Options ---
 
   private mainFile: string
 
-  private opts: LatexEditorOptions
+  private opts: FastLatexOptions
 
   private assetBaseUrl: string
 
@@ -120,7 +120,7 @@ export class LatexEditor {
 
   private currentFile: string
 
-  private runtimeScopeAttribute = 'data-latex-editor-runtime'
+  private runtimeScopeAttribute = 'data-fastlatex-runtime'
 
   private pendingRecompile = false
 
@@ -153,7 +153,7 @@ export class LatexEditor {
   constructor(
     editorContainer: EditorContainerInput,
     previewContainer: EditorContainerInput,
-    options: LatexEditorOptions = {},
+    options: FastLatexOptions = {},
   ) {
     this.opts = options
 
@@ -223,13 +223,16 @@ export class LatexEditor {
   private applyContainerBindings(): void {
     if (!this.editorContainer || !this.previewContainer) return
 
-    this.runtimeScopeAttribute = this.opts.runtimeScopeAttribute?.trim() || this.runtimeScopeAttribute
+    this.runtimeScopeAttribute =
+      this.opts.runtimeScopeAttribute?.trim() || this.runtimeScopeAttribute
 
     this.editorContainer.setAttribute(this.runtimeScopeAttribute, '')
     this.previewContainer.setAttribute(this.runtimeScopeAttribute, '')
 
     if (this.opts.editorContainerClassName) {
-      this.editorContainer.classList.add(...this.opts.editorContainerClassName.split(/\s+/).filter(Boolean))
+      this.editorContainer.classList.add(
+        ...this.opts.editorContainerClassName.split(/\s+/).filter(Boolean),
+      )
     }
 
     if (this.opts.previewContainerClassName) {
@@ -664,10 +667,10 @@ export class LatexEditor {
 
   // --- Events ---
 
-  on<K extends keyof LatexEditorEventMap>(
+  on<K extends keyof FastLatexEventMap>(
     event: K,
 
-    handler: EventHandler<LatexEditorEventMap[K]>,
+    handler: EventHandler<FastLatexEventMap[K]>,
   ): void {
     if (!this.listeners.has(event)) {
       this.listeners.set(event, new Set())
@@ -676,10 +679,10 @@ export class LatexEditor {
     this.listeners.get(event)!.add(handler)
   }
 
-  off<K extends keyof LatexEditorEventMap>(
+  off<K extends keyof FastLatexEventMap>(
     event: K,
 
-    handler: EventHandler<LatexEditorEventMap[K]>,
+    handler: EventHandler<FastLatexEventMap[K]>,
   ): void {
     this.listeners.get(event)?.delete(handler)
   }
@@ -795,7 +798,7 @@ export class LatexEditor {
   private setStatus(
     status: AppStatus,
     detail?: string,
-    flags?: Pick<LatexEditorStatusEvent, 'preambleSnapshot'>,
+    flags?: Pick<FastLatexStatusEvent, 'preambleSnapshot'>,
   ): void {
     if (this.pdfViewer) {
       const labels: Record<AppStatus, string> = {
@@ -817,7 +820,7 @@ export class LatexEditor {
       this.pdfViewer.setLoadingStatus(label)
     }
 
-    const payload: LatexEditorStatusEvent = { status }
+    const payload: FastLatexStatusEvent = { status }
 
     if (detail !== undefined) payload.message = detail
     if (flags?.preambleSnapshot) payload.preambleSnapshot = true
@@ -1030,7 +1033,7 @@ export class LatexEditor {
   private onCompileResult(result: CompileResult): void {
     perf.end('compile')
 
-    const statusFlags: Pick<LatexEditorStatusEvent, 'preambleSnapshot'> = {
+    const statusFlags: Pick<FastLatexStatusEvent, 'preambleSnapshot'> = {
       preambleSnapshot: !!result.preambleSnapshot,
     }
 
@@ -1053,7 +1056,7 @@ export class LatexEditor {
 
   private handleSuccessfulCompile(
     result: CompileResult,
-    statusFlags: Pick<LatexEditorStatusEvent, 'preambleSnapshot'>,
+    statusFlags: Pick<FastLatexStatusEvent, 'preambleSnapshot'>,
   ): void {
     for (const path of this.fs.listFiles()) {
       const file = this.fs.getFile(path)
@@ -1386,7 +1389,7 @@ export class LatexEditor {
 
   // ------------------------------------------------------------------
 
-  private emit<K extends keyof LatexEditorEventMap>(event: K, data: LatexEditorEventMap[K]): void {
+  private emit<K extends keyof FastLatexEventMap>(event: K, data: FastLatexEventMap[K]): void {
     const handlers = this.listeners.get(event)
 
     if (handlers) {

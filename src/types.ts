@@ -39,9 +39,9 @@ export type AppStatus = EngineStatus | 'rendering'
 /** Supported TeX Live versions. */
 export type TexliveVersion = '2020' | '2025'
 
-// --- LatexEditor component API ---
+// --- FastLatex component API ---
 
-export interface LatexEditorOptions {
+export interface FastLatexOptions {
   /** TeX Live version to use. Defaults to '2025'. */
   texliveVersion?: TexliveVersion
   /** TexLive server endpoint URL. Defaults to auto-detected from BASE_URL. */
@@ -60,11 +60,11 @@ export interface LatexEditorOptions {
   editorContainerClassName?: string
   /** Optional class name(s) to add to the preview container. */
   previewContainerClassName?: string
-  /** Attribute used to scope runtime styles. Defaults to `data-latex-editor-runtime`. */
+  /** Attribute used to scope runtime styles. Defaults to `data-fastlatex-runtime`. */
   runtimeScopeAttribute?: string
 }
 
-export interface LatexEditorStatusEvent {
+export interface FastLatexStatusEvent {
   /** Normalized editor lifecycle status. */
   status: AppStatus
   /** Human-readable status text. */
@@ -73,13 +73,13 @@ export interface LatexEditorStatusEvent {
   preambleSnapshot?: boolean
 }
 
-export interface LatexEditorEventMap {
+export interface FastLatexEventMap {
   /** Triggered when a compilation finishes */
   compile: { result: CompileResult }
   /** Triggered when file content changes */
   filechange: { path: string; content: string | Uint8Array }
   /** Triggered when editor status changes */
-  status: LatexEditorStatusEvent
+  status: FastLatexStatusEvent
   /** Triggered when the set of files in the project changes (created/deleted) */
   filesUpdate: { files: string[] }
   /** Triggered when the document outline (sections) is updated */

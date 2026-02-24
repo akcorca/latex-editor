@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LaTeX Editor — Embed Example</title>
-  <link rel="stylesheet" href="../dist/latex-editor.css" />
+  <title>FastLaTeX — Embed Example</title>
+  <link rel="stylesheet" href="../dist/fastlatex.css" />
   <style>
     body { margin: 0; }
     #container { width: 100vw; height: 100vh; }
@@ -13,9 +13,9 @@
 <body>
   <div id="container"></div>
   <script type="module">
-    import { LatexEditor } from '../dist/latex-editor.js'
+    import { FastLatex } from '../dist/fastlatex.js'
 
-    const editor = new LatexEditor(document.getElementById('container'), {
+    const editor = new FastLatex(document.getElementById('container'), {
       files: {
         'main.tex': `\\documentclass{article}
 \\begin{document}

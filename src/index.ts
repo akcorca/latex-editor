@@ -1,8 +1,8 @@
-export { LatexEditor } from './latex-editor'
+export { FastLatex } from './fastlatex'
 export type {
   AppStatus,
   CompileResult,
-  LatexEditorEventMap,
-  LatexEditorOptions,
+  FastLatexEventMap,
+  FastLatexOptions,
   TexError,
 } from './types'

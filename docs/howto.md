@@ -1,13 +1,13 @@
 # Integration Guide
 
-This guide explains how to integrate the `LatexEditor` library into your web applications.
+This guide explains how to integrate the `FastLatex` library into your web applications.
 
 ## Installation
 
 ```bash
 npm install monaco-editor pdfjs-dist
 # Then install the editor
-npm install github:akcorca/latex-editor#main
+npm install github:corca-ai/fastlatex#main
 ```
 
 **Note:** `monaco-editor` and `pdfjs-dist` are peer dependencies.
@@ -15,10 +15,10 @@ npm install github:akcorca/latex-editor#main
 ## Basic Usage
 
 ```typescript
-import { LatexEditor } from 'latex-editor'
-import 'latex-editor/style.css'
+import { FastLatex } from 'fastlatex'
+import 'fastlatex/style.css'
 
-const editor = new LatexEditor('#editor-container', '#preview-container', {
+const editor = new FastLatex('#editor-container', '#preview-container', {
   files: {
     'main.tex': '\\documentclass{article}\\begin{document}Hello world!\\end{document}'
   }
@@ -27,7 +27,7 @@ const editor = new LatexEditor('#editor-container', '#preview-container', {
 await editor.init()
 ```
 
-`LatexEditor` now exposes a dedicated stylesheet entrypoint (`latex-editor/style.css`) and no longer auto-imports it from the JS package entry.
+`FastLatex` now exposes a dedicated stylesheet entrypoint (`fastlatex/style.css`) and no longer auto-imports it from the JS package entry.
 Import it if you want the default built-in layout and viewer styles.
 
 ## Advanced Features
@@ -58,7 +58,7 @@ As shown in \cite{knuth1984}, TeX is great.
 Build a minimal layout by giving both editor and preview nodes.
 
 ```typescript
-const editor = new LatexEditor('#editor-container', '#preview-container', {
+const editor = new FastLatex('#editor-container', '#preview-container', {
   files: { 'main.tex': '...' }
 })
 
