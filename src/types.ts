@@ -65,6 +65,12 @@ export interface FastLatexOptions {
   previewContainerClassName?: string
   /** Attribute used to scope runtime styles. Defaults to `data-fastlatex-runtime`. */
   runtimeScopeAttribute?: string
+  /** Enable collaborative editing mode.
+   *  When true, FastLaTeX will never call `model.setValue()` on Monaco models,
+   *  leaving content ownership to an external CRDT / OT system (e.g. Yjs).
+   *  Listen for `modelCreate` / `modelDispose` events to bind your collaboration
+   *  provider to each model. */
+  collaboration?: boolean
 }
 
 export interface FastLatexStatusEvent {
@@ -91,4 +97,10 @@ export interface FastLatexEventMap {
   cursorChange: { path: string; line: number; column: number }
   /** Triggered when LSP diagnostics (errors/warnings) are updated */
   diagnostics: { diagnostics: TexError[] }
+  /** Triggered when a Monaco model is created for a project file.
+   *  Use this to attach collaborative bindings (e.g. y-monaco). */
+  modelCreate: { path: string; model: import('monaco-editor').editor.ITextModel }
+  /** Triggered just before a Monaco model is disposed.
+   *  Use this to clean up collaborative bindings. */
+  modelDispose: { path: string }
 }

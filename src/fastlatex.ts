@@ -540,10 +540,10 @@ export class FastLatex {
 
         const existing = this.models.get(path)
 
-        if (existing) {
-          existing.setValue(content)
-        } else {
+        if (!existing) {
           this.ensureModel(path, content)
+        } else if (!this.opts.collaboration) {
+          existing.setValue(content)
         }
       }
     }
@@ -602,7 +602,7 @@ export class FastLatex {
       const model = this.models.get(path)
 
       if (model) {
-        model.setValue(content)
+        if (!this.opts.collaboration) model.setValue(content)
       } else {
         this.ensureModel(path, content)
       }
@@ -705,6 +705,13 @@ export class FastLatex {
     return this.editor
   }
 
+  /** Get the Monaco model for a project file.
+   *  Useful for attaching external bindings (e.g. y-monaco). */
+
+  getModel(path: string): Monaco.editor.ITextModel | undefined {
+    return this.models.get(path)
+  }
+
   /** Get the built-in PDF viewer instance. */
 
   getViewer(): PdfViewer | undefined {
@@ -776,6 +783,8 @@ export class FastLatex {
       })
 
       this.modelDisposables.set(path, d)
+
+      this.emit('modelCreate', { path, model })
     }
 
     return model
@@ -785,6 +794,8 @@ export class FastLatex {
     const model = this.models.get(path)
 
     if (model) {
+      this.emit('modelDispose', { path })
+
       this.modelDisposables.get(path)?.dispose()
 
       this.modelDisposables.delete(path)

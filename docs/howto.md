@@ -212,6 +212,64 @@ myEditor.dispose()
 ### Intelligent Rename (F2)
 Press **F2** on a symbol to rename it across the project. Supports Labels, Citations, and custom Commands.
 
+### Collaborative Editing (Yjs)
+
+FastLaTeX supports real-time collaborative editing via Yjs and y-monaco.
+Enable `collaboration: true` so that FastLaTeX never calls `model.setValue()` on
+Monaco models — content ownership is delegated entirely to the CRDT layer.
+
+```typescript
+import * as Y from 'yjs'
+import { MonacoBinding } from 'y-monaco'
+import { WebsocketProvider } from 'y-websocket'
+import * as pdfjsLib from 'pdfjs-dist'
+import { FastLatex } from 'fastlatex'
+import 'fastlatex/style.css'
+
+// Worker setup (see "Worker Setup" section above)
+self.MonacoEnvironment = { /* ... */ }
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.mjs', import.meta.url,
+).toString()
+
+// Yjs setup
+const ydoc = new Y.Doc()
+const provider = new WebsocketProvider('ws://localhost:1234', 'my-room', ydoc)
+const yfiles = ydoc.getMap('files')
+const bindings = new Map<string, MonacoBinding>()
+
+// Create FastLatex with collaboration enabled
+const latex = new FastLatex('#editor', '#preview', {
+  files: { 'main.tex': '\\documentclass{article}\n\\begin{document}\nHello!\n\\end{document}' },
+  collaboration: true,
+})
+
+// Bind y-monaco to each model as it is created
+latex.on('modelCreate', ({ path, model }) => {
+  let ytext = yfiles.get(path) as Y.Text
+  if (!ytext) { ytext = new Y.Text(); yfiles.set(path, ytext) }
+  bindings.set(path, new MonacoBinding(
+    ytext, model, new Set([latex.getMonacoEditor()]), provider.awareness,
+  ))
+})
+
+// Clean up bindings when models are disposed
+latex.on('modelDispose', ({ path }) => {
+  bindings.get(path)?.destroy()
+  bindings.delete(path)
+})
+
+await latex.init()
+```
+
+**How it works:**
+- FastLaTeX creates Monaco models and emits `modelCreate` for each file.
+- Your code attaches a `MonacoBinding` that syncs the model content via Yjs.
+- Remote edits arrive as `model.applyEdits()` → triggers `onDidChangeContent` →
+  FastLaTeX updates its VFS and recompiles automatically.
+- `collaboration: true` prevents FastLaTeX from calling `model.setValue()`,
+  which would conflict with the CRDT state.
+
 ## References
 
 - **[Full API Reference](api.md)**: Detailed list of methods and events.
