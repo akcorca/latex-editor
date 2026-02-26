@@ -1040,6 +1040,14 @@ self["onmessage"] = function(ev) {
             FS.writeFile(WORKROOT + "/" + filename, fileData);
         }
         self.postMessage({ "result": "ok", "cmd": "preloadtexlive", "msgId": msgId });
+    } else if (cmd === "preload404") {
+        // Batch-inject known 404 entries into the cache to avoid wasted sync XHR.
+        var entries = data["entries"];
+        var msgId = data["msgId"];
+        for (var i = 0; i < entries.length; i++) {
+            texlive404_cache[entries[i].format + "/" + entries[i].filename] = 1;
+        }
+        self.postMessage({ "result": "ok", "cmd": "preload404", "msgId": msgId });
     } else if (cmd === "grace") {
         console.error("Gracefully Close");
         self.close();

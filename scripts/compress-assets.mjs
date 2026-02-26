@@ -15,7 +15,9 @@ const root = join(__dirname, '..')
 const targets = [
   // .fmt is a TeX memory dump with high entropy — gzip saves <2%, not worth it.
   // The engine's fetchGzWithFallback() will 404 on .fmt.gz and fall back to raw .fmt.
-  'public/texlive/pdftex/11/pdftex.map',
+  //
+  // pdftex.map is now fetched directly from CDN (warmup pre-loads it in the engine).
+  // The public/texlive/ bundle has been removed — all TeX Live files come from CDN.
 ]
 
 let totalSaved = 0

@@ -39,6 +39,24 @@ export type AppStatus = EngineStatus | 'rendering'
 /** Supported TeX Live versions. */
 export type TexliveVersion = '2020' | '2025'
 
+// --- Warmup / preload types ---
+
+export interface TexliveFileEntry {
+  format: number
+  filename: string
+}
+
+export interface CachedTexliveFile {
+  format: number
+  filename: string
+  data: ArrayBuffer
+}
+
+export interface WarmupCache {
+  files: CachedTexliveFile[]
+  notFound: TexliveFileEntry[]
+}
+
 // --- FastLatex component API ---
 
 export interface FastLatexOptions {
@@ -71,6 +89,8 @@ export interface FastLatexOptions {
    *  Listen for `modelCreate` / `modelDispose` events to bind your collaboration
    *  provider to each model. */
   collaboration?: boolean
+  /** Pre-fetched TeX Live files from `warmup()`. Eliminates sync XHR during first compile. */
+  warmupCache?: WarmupCache
 }
 
 export interface FastLatexStatusEvent {

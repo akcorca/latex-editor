@@ -173,6 +173,7 @@ export class FastLatex {
       assetBaseUrl: this.assetBaseUrl,
       skipFormatPreload: !!this.opts.skipFormatPreload,
       texliveVersion: this.opts.texliveVersion || '2025',
+      ...(this.opts.warmupCache ? { warmupCache: this.opts.warmupCache } : {}),
     }
 
     if (this.opts.texliveUrl) engineOpts.texliveUrl = this.opts.texliveUrl

@@ -1,8 +1,14 @@
 import { configureMonacoWorkers } from './editor/setup'
+import { warmup } from './engine/warmup'
 import { FastLatex } from './fastlatex'
 import type { SectionDef } from './lsp/types'
+import type { WarmupCache } from './types'
 import { configurePdfjsWorker } from './viewer/pdf-viewer'
 import './styles.css'
+
+// Start warmup immediately — fetches TeX Live files in parallel while
+// Monaco and the rest of the UI loads.
+const warmupPromise: Promise<WarmupCache> = warmup()
 
 // Configure workers for the demo app — must happen before FastLatex is created
 // so that the bundler (Vite) resolves the worker files from node_modules.
@@ -239,8 +245,11 @@ async function start() {
     files = await loadSampleProject()
   }
 
+  const warmupCache = await warmupPromise
+
   const opts: any = {
     texliveVersion: config.texliveVersion,
+    warmupCache,
   }
   if (files) {
     opts.files = files

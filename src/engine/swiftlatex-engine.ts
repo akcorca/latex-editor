@@ -1,5 +1,6 @@
-import type { CompileResult, TexliveVersion } from '../types'
+import type { CompileResult, TexliveVersion, WarmupCache } from '../types'
 import { BaseWorkerEngine, resolveTexliveUrl } from './base-worker-engine'
+import { fetchGzWithFallback, readStreamToBuffer } from './fetch-gz'
 import { parseTexErrors } from './parse-errors'
 
 export interface SwiftLatexEngineOptions {
@@ -11,6 +12,8 @@ export interface SwiftLatexEngineOptions {
   texliveUrl?: string
   /** If true, do not attempt to preload the base .fmt file. */
   skipFormatPreload?: boolean
+  /** Pre-fetched TeX Live files from `warmup()`. */
+  warmupCache?: WarmupCache
 }
 
 /** Counter for unique message IDs. */
@@ -38,6 +41,7 @@ export class SwiftLatexEngine extends BaseWorkerEngine<WorkerMessage> {
   private formatPath: string
   private skipFormatPreload: boolean
   private version: TexliveVersion
+  private warmupCache: WarmupCache | undefined
 
   public onFileDownload?: (filename: string) => void
 
@@ -48,6 +52,7 @@ export class SwiftLatexEngine extends BaseWorkerEngine<WorkerMessage> {
     this.formatPath = `${base}swiftlatex/${version}/swiftlatexpdftex.fmt`
     this.skipFormatPreload = !!options?.skipFormatPreload
     this.version = version
+    this.warmupCache = options?.warmupCache
   }
 
   async init(): Promise<void> {
@@ -75,6 +80,11 @@ export class SwiftLatexEngine extends BaseWorkerEngine<WorkerMessage> {
     // that nullifies the worker reference after posting the message
     const texliveUrl = resolveTexliveUrl(this.texliveUrl, this.version)
     this.worker!.postMessage({ cmd: 'settexliveurl', url: texliveUrl })
+
+    // Inject warmup cache (pre-fetched files + 404 entries) before other preloads
+    if (this.warmupCache) {
+      await this.injectWarmupCache(this.warmupCache)
+    }
 
     // Pre-load format and pdftex.map in parallel
     const preloads: Promise<void>[] = [
@@ -139,7 +149,7 @@ export class SwiftLatexEngine extends BaseWorkerEngine<WorkerMessage> {
 
   private async preloadFormat(): Promise<void> {
     try {
-      const buf = await this.fetchGzWithFallback(this.formatPath)
+      const buf = await this.fetchGzWithProgress(this.formatPath)
       if (!buf) return
       await this.postMessageWithResponse({ cmd: 'loadformat', data: buf }, 'cmd:loadformat', [buf])
     } catch {
@@ -150,7 +160,7 @@ export class SwiftLatexEngine extends BaseWorkerEngine<WorkerMessage> {
   /** Pre-load a texlive file into the worker's MEMFS cache. */
   private async preloadTexliveFile(format: number, filename: string, url: string): Promise<void> {
     try {
-      const buf = await this.fetchGzWithFallback(url)
+      const buf = await fetchGzWithFallback(url)
       if (!buf) return
       const msgId = `msg-${nextMsgId++}`
       await this.postMessageWithResponse(
@@ -163,39 +173,64 @@ export class SwiftLatexEngine extends BaseWorkerEngine<WorkerMessage> {
     }
   }
 
+  /** Inject pre-fetched warmup cache into the worker. */
+  private async injectWarmupCache(cache: WarmupCache): Promise<void> {
+    const promises: Promise<unknown>[] = []
+
+    // Send each cached file to the worker via preloadtexlive
+    for (const file of cache.files) {
+      const msgId = `msg-${nextMsgId++}`
+      const buf = file.data
+      promises.push(
+        this.postMessageWithResponse(
+          { cmd: 'preloadtexlive', format: file.format, filename: file.filename, data: buf, msgId },
+          msgId,
+          [buf],
+        ),
+      )
+    }
+
+    // Send 404 entries in a single batch.
+    // Uses a timeout because old pre-built WASM workers won't have the
+    // preload404 command and will silently ignore it (no response).
+    if (cache.notFound.length > 0) {
+      const msgId = `msg-${nextMsgId++}`
+      const preload404 = this.postMessageWithResponse(
+        { cmd: 'preload404', entries: cache.notFound, msgId },
+        msgId,
+      )
+      const timeout = new Promise<void>((resolve) => setTimeout(resolve, 2000))
+      promises.push(Promise.race([preload404, timeout]))
+    }
+
+    await Promise.all(promises)
+  }
+
   /**
    * Try fetching url.gz first (with DecompressionStream), fall back to raw url.
-   * Returns the ArrayBuffer or null if both fail.
+   * Wraps the shared fetchGzWithFallback with download-progress tracking for
+   * the .fmt preload.
    */
-  private async fetchGzWithFallback(url: string): Promise<ArrayBuffer | null> {
-    if (typeof DecompressionStream !== 'undefined') {
+  private async fetchGzWithProgress(url: string): Promise<ArrayBuffer | null> {
+    if (typeof DecompressionStream !== 'undefined' && this.onProgress) {
       try {
         const resp = await fetch(`${url}.gz`)
         if (resp.ok) {
-          return await this.decompressGzipResponse(resp)
+          return await this.decompressWithProgress(resp)
         }
       } catch {
-        // .gz fetch or decompress failed — try raw
+        // .gz fetch or decompress failed — try shared fallback
       }
     }
-
-    // Fallback: fetch uncompressed
-    try {
-      const resp = await fetch(url)
-      if (!resp.ok) return null
-      return await resp.arrayBuffer()
-    } catch {
-      return null
-    }
+    return fetchGzWithFallback(url)
   }
 
-  private async decompressGzipResponse(resp: Response): Promise<ArrayBuffer> {
+  private async decompressWithProgress(resp: Response): Promise<ArrayBuffer> {
     const ds = new DecompressionStream('gzip')
     const contentLength = Number.parseInt(resp.headers.get('Content-Length') || '0', 10)
     let loaded = 0
     const engine = this
 
-    // Wrap the response body to track download progress
     const progressStream = new ReadableStream({
       async start(controller) {
         const reader = resp.body!.getReader()
@@ -212,22 +247,7 @@ export class SwiftLatexEngine extends BaseWorkerEngine<WorkerMessage> {
       },
     })
 
-    const decompressed = progressStream.pipeThrough(ds)
-    const reader = decompressed.getReader()
-    const chunks: Uint8Array[] = []
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      chunks.push(value)
-    }
-    const total = chunks.reduce((s, c) => s + c.length, 0)
-    const result = new Uint8Array(total)
-    let offset = 0
-    for (const c of chunks) {
-      result.set(c, offset)
-      offset += c.length
-    }
-    return result.buffer
+    return readStreamToBuffer(progressStream.pipeThrough(ds))
   }
 
   async mkdir(path: string): Promise<void> {

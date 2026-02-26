@@ -1,0 +1,89 @@
+/**
+ * Standalone warmup function that pre-fetches TeX Live files before
+ * the WASM engine starts. Eliminates blocking sync XHR during first compile.
+ */
+import type { CachedTexliveFile, WarmupCache } from '../types'
+import { resolveTexliveUrl } from './base-worker-engine'
+import { fetchGzWithFallback } from './fetch-gz'
+import { KNOWN_404S, PRELOAD_FILES } from './texlive-manifest'
+
+export interface WarmupOptions {
+  /** TeX Live version. Defaults to '2025'. */
+  texliveVersion?: '2020' | '2025'
+  /** Override TeX Live CDN endpoint. */
+  texliveUrl?: string
+  /** Max concurrent fetches. Defaults to 6. */
+  concurrency?: number
+  /** AbortSignal for cancellation. */
+  signal?: AbortSignal
+  /** Progress callback: called with (completed, total). */
+  onProgress?: (completed: number, total: number) => void
+}
+
+/**
+ * Pre-fetch TeX Live files needed for first compilation.
+ *
+ * Call this as early as possible (e.g. on page load), then pass the
+ * result as `warmupCache` to the `FastLatex` constructor.
+ *
+ * ```ts
+ * const cache = await warmup()
+ * const editor = new FastLatex('#editor', '#preview', { warmupCache: cache })
+ * ```
+ */
+export async function warmup(options?: WarmupOptions): Promise<WarmupCache> {
+  const version = options?.texliveVersion ?? '2025'
+  const concurrency = options?.concurrency ?? 6
+  const signal = options?.signal
+  const onProgress = options?.onProgress
+
+  const baseUrl = resolveTexliveUrl(options?.texliveUrl ?? null, version)
+
+  // Inject DNS preconnect hint
+  injectPreconnect(baseUrl)
+
+  const files: CachedTexliveFile[] = []
+  const total = PRELOAD_FILES.length
+  let completed = 0
+
+  // Concurrency pool
+  const queue = [...PRELOAD_FILES]
+
+  async function worker(): Promise<void> {
+    while (queue.length > 0) {
+      if (signal?.aborted) return
+
+      const entry = queue.shift()!
+      try {
+        const url = `${baseUrl}pdftex/${entry.format}/${entry.filename}`
+        const fetchOpts: RequestInit = signal ? { signal } : {}
+        const data = await fetchGzWithFallback(url, fetchOpts)
+        if (data) {
+          files.push({ format: entry.format, filename: entry.filename, data })
+        }
+      } catch {
+        // Fetch failed — file will be fetched on demand by the worker
+      }
+      completed++
+      onProgress?.(completed, total)
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(concurrency, total) }, () => worker())
+  await Promise.all(workers)
+
+  return { files, notFound: [...KNOWN_404S] }
+}
+
+function injectPreconnect(baseUrl: string): void {
+  try {
+    const origin = new URL(baseUrl).origin
+    if (document.querySelector(`link[rel="preconnect"][href="${origin}"]`)) return
+    const link = document.createElement('link')
+    link.rel = 'preconnect'
+    link.href = origin
+    document.head.appendChild(link)
+  } catch {
+    // Not in a browser environment
+  }
+}

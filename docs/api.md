@@ -42,6 +42,22 @@ or a CSS selector string.
 | `previewContainerClassName` | `string` | `''` | Extra class name(s) for the preview container |
 | `runtimeScopeAttribute` | `string` | `data-fastlatex-runtime` | Attribute used to scope runtime UI styles |
 | `collaboration` | `boolean` | `false` | Enable collaborative editing. When `true`, FastLaTeX never calls `model.setValue()` on Monaco models, leaving content ownership to an external CRDT/OT system (e.g. Yjs). Listen for `modelCreate`/`modelDispose` events to bind your provider. |
+| `warmupCache` | `WarmupCache` | - | Pre-fetched TeX Live files from `warmup()`. Eliminates blocking sync XHR during first compilation. See [Warmup](warmup.md). |
+
+## Standalone Functions
+
+### `warmup(options?): Promise<WarmupCache>`
+
+Pre-fetch TeX Live files needed for first compilation. Call as early as possible, then pass the result as `warmupCache` to the constructor.
+
+```ts
+import { warmup, FastLatex } from 'fastlatex'
+
+const cache = warmup() // start immediately
+const editor = new FastLatex('#editor', '#preview', { warmupCache: await cache })
+```
+
+See [Warmup](warmup.md) for full options and details.
 
 ## Methods
 
