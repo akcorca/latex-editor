@@ -56,6 +56,7 @@ export class PdfViewer {
   private pageObserver: IntersectionObserver | null = null
   private pageRenderer = new PageRenderer()
   private lastPdf: Uint8Array | null = null
+  private toolbarHidden = false
 
   private loadingOverlay: HTMLElement | null = null
 
@@ -222,7 +223,7 @@ export class PdfViewer {
     }
 
     this.removeLoadingOverlay()
-    this.controlsEl.style.display = 'flex'
+    if (!this.toolbarHidden) this.controlsEl.style.display = 'flex'
     this.downloadBtn.style.display = ''
 
     // Clamp current page
@@ -371,6 +372,33 @@ export class PdfViewer {
     for (const wrapper of this.pagesContainer.querySelectorAll('.pdf-page-container')) {
       this.pageObserver.observe(wrapper)
     }
+  }
+
+  /** Set the absolute zoom scale (clamped to 0.25–5). */
+  setScale(scale: number): void {
+    this.scale = Math.max(0.25, Math.min(5, scale))
+    this.updateZoomLabel()
+    if (this.pdfDoc) {
+      const generation = ++this.renderGeneration
+      this.renderAllPages(generation)
+    }
+  }
+
+  /** Zoom to fit the page width inside the container. */
+  fitToWidth(): void {
+    if (!this.pdfDoc) return
+    this.pdfDoc.getPage(Math.min(this.currentPage, this.pdfDoc.numPages)).then((page) => {
+      const viewport = page.getViewport({ scale: 1 })
+      // Account for container padding/scrollbar
+      const availableWidth = this.container.clientWidth - 16
+      this.setScale(availableWidth / viewport.width)
+    })
+  }
+
+  /** Show or hide the toolbar (zoom controls, page info, download button). */
+  setToolbarVisible(visible: boolean): void {
+    this.toolbarHidden = !visible
+    this.controlsEl.style.display = visible ? 'flex' : 'none'
   }
 
   private zoom(delta: number): void {
