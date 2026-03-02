@@ -43,6 +43,7 @@ or a CSS selector string.
 | `runtimeScopeAttribute` | `string` | `data-fastlatex-runtime` | Attribute used to scope runtime UI styles |
 | `collaboration` | `boolean` | `false` | Enable collaborative editing. When `true`, FastLaTeX never calls `model.setValue()` on Monaco models, leaving content ownership to an external CRDT/OT system (e.g. Yjs). Listen for `modelCreate`/`modelDispose` events to bind your provider. |
 | `warmupCache` | `WarmupCache` | - | Pre-fetched TeX Live files from `warmup()`. Eliminates blocking sync XHR during first compilation. See [Warmup](warmup.md). |
+| `toolbar` | `boolean` | `true` | Show or hide the PDF viewer toolbar (zoom controls, page info, download button). Set to `false` to hide the toolbar entirely from initialization. |
 
 ## Standalone Functions
 

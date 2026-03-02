@@ -257,6 +257,10 @@ export class FastLatex {
     this.pdfViewer.setInverseSearchHandler((loc) => {
       this.revealLine(loc.line, loc.file)
     })
+
+    if (this.opts.toolbar === false) {
+      this.pdfViewer.setToolbarVisible(false)
+    }
   }
 
   private initScheduler(): void {

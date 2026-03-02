@@ -57,6 +57,7 @@ export class PdfViewer {
   private pageRenderer = new PageRenderer()
   private lastPdf: Uint8Array | null = null
   private toolbarHidden = false
+  private intrinsicPageWidth = 0
 
   private loadingOverlay: HTMLElement | null = null
 
@@ -222,6 +223,14 @@ export class PdfViewer {
       return performance.now() - start
     }
 
+    // Cache intrinsic page width for synchronous fitToWidth()
+    const p1 = await this.pdfDoc.getPage(1)
+    if (generation !== this.renderGeneration) {
+      this.pdfDoc.destroy()
+      return performance.now() - start
+    }
+    this.intrinsicPageWidth = p1.getViewport({ scale: 1 }).width
+
     this.removeLoadingOverlay()
     if (!this.toolbarHidden) this.controlsEl.style.display = 'flex'
     this.downloadBtn.style.display = ''
@@ -242,9 +251,10 @@ export class PdfViewer {
       }
     }
 
-    // Destroy old document after swap
+    // Destroy old document after swap — defer to let any pending getPage()
+    // promises from previous fitToWidth() calls settle first.
     if (oldDoc) {
-      oldDoc.destroy()
+      queueMicrotask(() => oldDoc.destroy())
     }
 
     return performance.now() - start
@@ -267,7 +277,13 @@ export class PdfViewer {
     const visiblePage = Math.min(this.currentPage, numPages)
     if (generation !== this.renderGeneration) return
 
-    const firstResult = await this.pageRenderer.renderPage(this.pdfDoc, visiblePage, this.scale)
+    let firstResult: Awaited<ReturnType<PageRenderer['renderPage']>>
+    try {
+      firstResult = await this.pageRenderer.renderPage(this.pdfDoc, visiblePage, this.scale)
+    } catch {
+      // pdfDoc destroyed during concurrent render — skip silently
+      return
+    }
     if (generation !== this.renderGeneration) return
 
     const wrappers = this.buildPageWrappers(numPages, visiblePage, firstResult.wrapper, oldWrappers)
@@ -277,13 +293,30 @@ export class PdfViewer {
     const visibleOldCanvas = oldWrappers[visiblePage - 1]?.querySelector('canvas')
     if (visibleOldCanvas) this.pageRenderer.recycle([visibleOldCanvas as HTMLCanvasElement])
 
-    // Phase 2: Render remaining pages to offscreen canvases, then swap atomically.
-    // Recycle each old canvas only AFTER its wrapper leaves the DOM.
+    // Phase 2: Render remaining pages
+    await this.renderRemainingPages(generation, numPages, visiblePage, wrappers)
+  }
+
+  /** Render non-visible pages and swap them into the DOM one by one. */
+  private async renderRemainingPages(
+    generation: number,
+    numPages: number,
+    visiblePage: number,
+    wrappers: HTMLElement[],
+  ): Promise<void> {
+    if (!this.pdfDoc) return
+
     for (let i = 1; i <= numPages; i++) {
       if (i === visiblePage) continue
       if (generation !== this.renderGeneration) return
 
-      const result = await this.pageRenderer.renderPage(this.pdfDoc, i, this.scale)
+      let result: Awaited<ReturnType<PageRenderer['renderPage']>>
+      try {
+        result = await this.pageRenderer.renderPage(this.pdfDoc, i, this.scale)
+      } catch {
+        // pdfDoc destroyed during concurrent render — skip silently
+        return
+      }
       if (generation !== this.renderGeneration) return
 
       // Old wrapper's canvas is still in DOM — recycle after replacement
@@ -384,15 +417,13 @@ export class PdfViewer {
     }
   }
 
-  /** Zoom to fit the page width inside the container. */
+  /** Zoom to fit the page width inside the container.
+   *  Synchronous — safe to call from resize/ResizeObserver handlers. */
   fitToWidth(): void {
-    if (!this.pdfDoc) return
-    this.pdfDoc.getPage(Math.min(this.currentPage, this.pdfDoc.numPages)).then((page) => {
-      const viewport = page.getViewport({ scale: 1 })
-      // Account for container padding/scrollbar
-      const availableWidth = this.container.clientWidth - 16
-      this.setScale(availableWidth / viewport.width)
-    })
+    if (!this.intrinsicPageWidth) return
+    const availableWidth = this.container.clientWidth - 16
+    if (availableWidth <= 0) return
+    this.setScale(availableWidth / this.intrinsicPageWidth)
   }
 
   /** Show or hide the toolbar (zoom controls, page info, download button). */

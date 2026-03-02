@@ -91,6 +91,9 @@ export interface FastLatexOptions {
   collaboration?: boolean
   /** Pre-fetched TeX Live files from `warmup()`. Eliminates sync XHR during first compile. */
   warmupCache?: WarmupCache
+  /** Show or hide the PDF viewer toolbar (zoom, page info, download).
+   *  Defaults to `true`. Set to `false` to hide the toolbar entirely. */
+  toolbar?: boolean
 }
 
 export interface FastLatexStatusEvent {
