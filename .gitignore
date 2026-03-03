@@ -5,6 +5,9 @@ bin/
 *.log
 .env.local
 
+# Generated bloom filter (uploaded to S3)
+bloom-filter.bin
+
 # Playwright
 test-results/
 .playwright-cli/

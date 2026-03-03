@@ -81,9 +81,12 @@ export class SwiftLatexEngine extends BaseWorkerEngine<WorkerMessage> {
     const texliveUrl = resolveTexliveUrl(this.texliveUrl, this.version)
     this.worker!.postMessage({ cmd: 'settexliveurl', url: texliveUrl })
 
-    // Inject warmup cache (pre-fetched files + 404 entries) before other preloads
+    // Inject warmup cache (pre-fetched files + 404 entries + bloom filter) before other preloads
     if (this.warmupCache) {
       await this.injectWarmupCache(this.warmupCache)
+    } else {
+      // No warmup cache — fetch bloom filter directly
+      await this.fetchAndSendBloomFilter()
     }
 
     // Pre-load format and pdftex.map in parallel
@@ -204,7 +207,26 @@ export class SwiftLatexEngine extends BaseWorkerEngine<WorkerMessage> {
       promises.push(Promise.race([preload404, timeout]))
     }
 
+    // Send bloom filter to worker if available
+    if (cache.bloomFilter) {
+      const buf = cache.bloomFilter.slice(0)
+      this.worker!.postMessage({ cmd: 'loadbloom', data: buf }, [buf])
+    }
+
     await Promise.all(promises)
+  }
+
+  /** Fetch bloom filter from CDN and send it to the worker. */
+  private async fetchAndSendBloomFilter(): Promise<void> {
+    try {
+      const url = `${resolveTexliveUrl(this.texliveUrl, this.version)}bloom-filter.bin`
+      const resp = await fetch(url)
+      if (!resp.ok) return
+      const buf = await resp.arrayBuffer()
+      this.worker!.postMessage({ cmd: 'loadbloom', data: buf }, [buf])
+    } catch {
+      // Bloom filter not available — worker falls back to XHR for all lookups
+    }
   }
 
   /**

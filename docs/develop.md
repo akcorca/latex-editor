@@ -29,6 +29,7 @@ npm run dev               # Start dev server
 | `npm run lint` | Lint check (Biome) |
 | `npm run format` | Format code (Biome) |
 | `npm run download-engine` | Download and patch pre-built WASM engines |
+| `node scripts/gen-bloom-filter.mjs` | Generate bloom filter for CDN file existence checks (requires AWS CLI) |
 
 ## Architecture & Internals
 

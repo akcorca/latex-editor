@@ -25,10 +25,12 @@ await editor.init()
 
 1. `warmup()` injects a `<link rel="preconnect">` hint for the CDN
 2. Fetches all 64 known TeX Live files in parallel (concurrency pool of 6)
-3. Tries `.gz` compressed versions first, falls back to raw
-4. Returns a `WarmupCache` containing the fetched `ArrayBuffer`s and a list of known-404 entries
-5. When passed to the constructor, the engine sends all files to the worker via `postMessage` (with transferables) before compilation starts
-6. Known-404 entries are batch-injected into the worker's 404 cache, preventing wasted XHR
+3. Fetches the bloom filter (`bloom-filter.bin`) in parallel with file preloads
+4. Tries `.gz` compressed versions first, falls back to raw
+5. Returns a `WarmupCache` containing the fetched `ArrayBuffer`s, a list of known-404 entries, and the bloom filter
+6. When passed to the constructor, the engine sends all files to the worker via `postMessage` (with transferables) before compilation starts
+7. Known-404 entries are batch-injected into the worker's 404 cache, preventing wasted XHR
+8. The bloom filter is sent to the worker, which uses it to skip XHR for files not on the CDN (if warmup is not used, the engine fetches the bloom filter directly during `init()`)
 
 ## Options
 

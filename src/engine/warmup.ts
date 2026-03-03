@@ -69,10 +69,19 @@ export async function warmup(options?: WarmupOptions): Promise<WarmupCache> {
     }
   }
 
+  // Fetch bloom filter in parallel with file preloads
+  const bloomPromise = fetch(`${baseUrl}bloom-filter.bin`, signal ? { signal } : {})
+    .then((r) => (r.ok ? r.arrayBuffer() : null))
+    .catch(() => null)
+
   const workers = Array.from({ length: Math.min(concurrency, total) }, () => worker())
   await Promise.all(workers)
 
-  return { files, notFound: [...KNOWN_404S] }
+  const bloomFilter = await bloomPromise
+
+  const result: WarmupCache = { files, notFound: [...KNOWN_404S] }
+  if (bloomFilter) result.bloomFilter = bloomFilter
+  return result
 }
 
 function injectPreconnect(baseUrl: string): void {

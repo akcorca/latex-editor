@@ -24,6 +24,7 @@ Packages are fetched via synchronous XHR inside the WASM worker.
 
 - **CDN**: Served via CloudFront (`d1jectpaw0dlvl.cloudfront.net`). This is a public CDN — no configuration is needed for basic usage.
 - **Structure**: Files are organized by TeX Live version and format IDs (e.g., `2025/pdftex/26/` for `.sty` files).
+- **Bloom Filter**: A ~172 KB bloom filter (`bloom-filter.bin`) is fetched at startup and loaded into the worker. It allows the worker to skip sync XHR for files that definitely don't exist on the CDN, eliminating 403 errors in the browser console. Regenerate with `node scripts/gen-bloom-filter.mjs`.
 - **Caching**: A Service Worker (`public/sw.js`) caches these files locally to enable offline compilation and speed up subsequent runs.
 
 ### URL Resolution Order

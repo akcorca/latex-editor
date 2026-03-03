@@ -55,6 +55,7 @@ export interface CachedTexliveFile {
 export interface WarmupCache {
   files: CachedTexliveFile[]
   notFound: TexliveFileEntry[]
+  bloomFilter?: ArrayBuffer
 }
 
 // --- FastLatex component API ---

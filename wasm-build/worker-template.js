@@ -387,6 +387,54 @@ function allocateString(str) {
 var texlive404_cache = {};
 var texlive200_cache = {};
 
+// --- Bloom filter for CDN existence checks -----------------------------------
+//
+// When loaded, the bloom filter lets us skip sync XHR for files that definitely
+// don't exist on the CDN. This eliminates 403 errors in the browser console
+// (which JS cannot suppress). False positives (bloom says YES but file missing)
+// are harmless — the XHR will fail and the 404 cache catches it as before.
+//
+// Binary format: [4B magic "BF01"] [1B k] [4B m big-endian] [ceil(m/8)B bits]
+// Hash: FNV-1a based double hashing: h_i = (h1 + i * h2) mod m
+
+var bloom_bits = null;  // Uint8Array of the bit array
+var bloom_k = 0;        // number of hash functions
+var bloom_m = 0;        // number of bits
+
+function fnv1a(str) {
+    // Returns two 32-bit hashes as [h1, h2] for double hashing.
+    // h1 = FNV-1a with standard offset basis
+    // h2 = FNV-1a with different offset basis
+    var h1 = 0x811c9dc5 | 0;
+    var h2 = 0x01000193 | 0;  // different seed for second hash
+    for (var i = 0; i < str.length; i++) {
+        var c = str.charCodeAt(i);
+        h1 = h1 ^ c;
+        h1 = Math.imul(h1, 0x01000193);
+        h2 = h2 ^ c;
+        h2 = Math.imul(h2, 0x01000193);
+    }
+    return [h1 >>> 0, h2 >>> 0];
+}
+
+function bloomCheck(key) {
+    // Returns true if the key MIGHT exist, false if it DEFINITELY does not.
+    if (!bloom_bits) return true;  // no bloom filter loaded → allow XHR
+    var hashes = fnv1a(key);
+    var h1 = hashes[0];
+    var h2 = hashes[1];
+    for (var i = 0; i < bloom_k; i++) {
+        var bit = (h1 + Math.imul(i, h2)) >>> 0;
+        bit = bit % bloom_m;
+        var byteIdx = bit >>> 3;
+        var bitIdx = bit & 7;
+        if ((bloom_bits[byteIdx] & (1 << bitIdx)) === 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
 function kpse_find_file_impl(nameptr, format, _mustexist) {
     var reqname = UTF8ToString(nameptr);
     
@@ -409,6 +457,13 @@ function kpse_find_file_impl(nameptr, format, _mustexist) {
     if (cacheKey in texlive200_cache) {
         var savepath = texlive200_cache[cacheKey];
         return allocateString(savepath);
+    }
+
+    // Bloom filter check: if the file definitely isn't on the CDN, skip XHR entirely.
+    // This prevents 403 errors in the browser console that JS cannot suppress.
+    if (!bloomCheck(format + "/" + reqname)) {
+        texlive404_cache[cacheKey] = 1;
+        return 0;
     }
 
     // Helper for actual fetch
@@ -1040,6 +1095,24 @@ self["onmessage"] = function(ev) {
             FS.writeFile(WORKROOT + "/" + filename, fileData);
         }
         self.postMessage({ "result": "ok", "cmd": "preloadtexlive", "msgId": msgId });
+    } else if (cmd === "loadbloom") {
+        // Load bloom filter for CDN existence checks.
+        // Binary format: [4B magic "BF01"] [1B k] [4B m big-endian] [ceil(m/8)B bits]
+        var bloomData = new Uint8Array(data["data"]);
+        if (bloomData.length >= 9) {
+            // Verify magic bytes "BF01"
+            if (bloomData[0] === 0x42 && bloomData[1] === 0x46 &&
+                bloomData[2] === 0x30 && bloomData[3] === 0x31) {
+                bloom_k = bloomData[4];
+                bloom_m = (bloomData[5] << 24) | (bloomData[6] << 16) |
+                          (bloomData[7] << 8) | bloomData[8];
+                bloom_bits = bloomData.subarray(9);
+                console.log("[bloom] loaded: m=" + bloom_m + " k=" + bloom_k +
+                            " (" + bloom_bits.length + " bytes)");
+            } else {
+                console.warn("[bloom] invalid magic bytes, ignoring");
+            }
+        }
     } else if (cmd === "preload404") {
         // Batch-inject known 404 entries into the cache to avoid wasted sync XHR.
         var entries = data["entries"];
