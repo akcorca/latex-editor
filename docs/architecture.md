@@ -63,5 +63,10 @@ Rename functionality uses `ProjectIndex.findAllOccurrences()` to find symbols in
 - `
 ewcommand{\cmd}` ↔ `\cmd` usages
 
+Cross-file rename edits are reported to the host via the `workspaceEdit` event.
+
+### Cross-File Navigation
+Go-to-definition and references can target locations in other project files. When this happens, FastLaTeX switches the active file internally and emits a `fileOpen` event so the host can update its UI (file tabs, collaboration bindings, etc.).
+
 ### Diagnostics
 Diagnostics are computed by `DiagnosticProvider` by cross-referencing the `ProjectIndex`. For example, it flags `ef{key}` if `key` does not exist in any loaded file.

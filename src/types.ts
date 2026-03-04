@@ -127,4 +127,19 @@ export interface FastLatexEventMap {
   /** Triggered just before a Monaco model is disposed.
    *  Use this to clean up collaborative bindings. */
   modelDispose: { path: string }
+  /** Triggered when the active file changes in the editor (via openFile, go-to-definition, etc.). */
+  fileOpen: { path: string }
+  /** Triggered when a workspace-wide edit (e.g. rename) is applied across files. */
+  workspaceEdit: {
+    edits: Array<{
+      file: string
+      range: {
+        startLineNumber: number
+        startColumn: number
+        endLineNumber: number
+        endColumn: number
+      }
+      newText: string
+    }>
+  }
 }

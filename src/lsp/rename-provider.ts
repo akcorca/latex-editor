@@ -1,7 +1,23 @@
 import type * as Monaco from 'monaco-editor'
 import type { ProjectIndex } from './project-index'
 
-export function createRenameProvider(projectIndex: ProjectIndex): Monaco.languages.RenameProvider {
+export interface WorkspaceEditInfo {
+  edits: Array<{
+    file: string
+    range: {
+      startLineNumber: number
+      startColumn: number
+      endLineNumber: number
+      endColumn: number
+    }
+    newText: string
+  }>
+}
+
+export function createRenameProvider(
+  projectIndex: ProjectIndex,
+  onWorkspaceEdit?: (info: WorkspaceEditInfo) => void,
+): Monaco.languages.RenameProvider {
   return {
     provideRenameEdits: (model, position, newName) => {
       const filePath = model.uri.path.substring(1) // Remove leading slash
@@ -23,6 +39,16 @@ export function createRenameProvider(projectIndex: ProjectIndex): Monaco.languag
           text: newName,
         },
       }))
+
+      if (onWorkspaceEdit && edits.length > 0) {
+        onWorkspaceEdit({
+          edits: edits.map((e) => ({
+            file: (e as Monaco.languages.IWorkspaceTextEdit).resource.path.substring(1),
+            range: (e as Monaco.languages.IWorkspaceTextEdit).textEdit.range,
+            newText: (e as Monaco.languages.IWorkspaceTextEdit).textEdit.text,
+          })),
+        })
+      }
 
       return { edits }
     },

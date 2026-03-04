@@ -360,6 +360,8 @@ export class FastLatex {
         if (this.currentFile !== path) {
           this.currentFile = path
 
+          this.emit('fileOpen', { path })
+
           this.emitOutline()
 
           this.runDiagnostics()
@@ -413,7 +415,9 @@ export class FastLatex {
   }
 
   private initRuntimeServices(): void {
-    this.lspDisposables = registerLatexProviders(this.projectIndex, this.fs)
+    this.lspDisposables = registerLatexProviders(this.projectIndex, this.fs, (info) =>
+      this.emit('workspaceEdit', info),
+    )
 
     initPerfOverlay()
 
@@ -502,6 +506,8 @@ export class FastLatex {
     // Switch editor to main file
 
     this.currentFile = this.mainFile
+
+    this.emit('fileOpen', { path: this.currentFile })
 
     this.lastForwardLine = -1
 
@@ -721,6 +727,12 @@ export class FastLatex {
 
   getViewer(): PdfViewer | undefined {
     return this.pdfViewer
+  }
+
+  /** Get the path of the file currently open in the editor. */
+
+  getActiveFile(): string {
+    return this.currentFile
   }
 
   /** Jump the editor to a specific line. */
@@ -949,6 +961,8 @@ export class FastLatex {
     }
 
     this.currentFile = path
+
+    this.emit('fileOpen', { path })
 
     this.lastForwardLine = -1
 

@@ -65,6 +65,9 @@ See [Warmup](warmup.md) for full options and details.
 - `init(): Promise<void>` — Initializes the WASM engines and runs the first compilation.
 - `loadProject(files: Record<string, string | Uint8Array>): void` — Replaces the entire project with new files.
 - `setFile(path: string, content: string | Uint8Array): void` — Adds or updates a single file.
+- `getFile(path: string): string | Uint8Array | null` — Reads a file's content from the virtual filesystem.
+- `openFile(path: string): void` — Opens a specific file in the editor.
+- `getActiveFile(): string` — Returns the path of the file currently open in the editor.
 - `deleteFile(path: string): boolean` — Deletes a file from the virtual filesystem.
 - `listFiles(): string[]` — Returns a list of all files in the project.
 - `compile(): void` — Triggers an immediate compilation (bypassing the auto-compile debounce).
@@ -96,6 +99,8 @@ Use `editor.on(event, handler)` / `editor.off(event, handler)` to subscribe/unsu
 | `outlineUpdate` | `{ sections: SectionDef[] }` | Document structure (sections/subsections) changed. |
 | `modelCreate` | `{ path: string, model: ITextModel }` | A Monaco model was created for a project file. Use this to attach collaboration bindings. |
 | `modelDispose` | `{ path: string }` | A Monaco model is about to be disposed. Use this to clean up collaboration bindings. |
+| `fileOpen` | `{ path: string }` | The active file changed in the editor. Fired on `openFile()`, go-to-definition navigation, inverse search, and `loadProject()`. |
+| `workspaceEdit` | `{ edits: Array<{ file, range, newText }> }` | A workspace-wide edit (e.g. rename) was applied across one or more files. |
 
 ### Example: forwarding diagnostics to an external panel
 

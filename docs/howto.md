@@ -209,6 +209,33 @@ latex.dispose()
 myEditor.dispose()
 ```
 
+### Multi-File Navigation
+
+FastLaTeX handles cross-file navigation (go-to-definition, inverse search) internally.
+Use the `fileOpen` event to keep your host UI in sync:
+
+```typescript
+// Track which file is active (e.g. for file tabs)
+latex.on('fileOpen', ({ path }) => {
+  highlightTab(path)
+})
+
+// Programmatic file switching
+latex.openFile('chapters/intro.tex')
+
+// Query the current file
+const current = latex.getActiveFile()
+```
+
+When a rename (F2) affects multiple files, the `workspaceEdit` event reports all edits:
+
+```typescript
+latex.on('workspaceEdit', ({ edits }) => {
+  const affectedFiles = new Set(edits.map(e => e.file))
+  console.log('Rename touched:', [...affectedFiles])
+})
+```
+
 ### Intelligent Rename (F2)
 Press **F2** on a symbol to rename it across the project. Supports Labels, Citations, and custom Commands.
 
@@ -269,6 +296,8 @@ await latex.init()
   FastLaTeX updates its VFS and recompiles automatically.
 - `collaboration: true` prevents FastLaTeX from calling `model.setValue()`,
   which would conflict with the CRDT state.
+- Use `fileOpen` to switch Yjs bindings when the active file changes
+  (e.g. via go-to-definition or `openFile()`).
 
 ## References
 
